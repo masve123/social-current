@@ -50,7 +50,7 @@ export async function createNowPaymentsInvoice(input: {
       cancel_url: input.cancelUrl,
       partially_paid_url: input.successUrl,
       is_fixed_rate: true,
-      is_fee_paid_by_user: true,
+      is_fee_paid_by_user: false,
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(20_000),

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Check, Clock3, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { calculatePrice, type Service } from "@/lib/services";
-import { getStandardCheckoutMinimumQuantity, minimumCheckoutUsd } from "@/lib/checkout-pricing";
+import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
 
 export function PackagePicker({ service }: { service: Service }) {
   const minQuantity = getStandardCheckoutMinimumQuantity(service);
@@ -47,8 +47,8 @@ export function PackagePicker({ service }: { service: Service }) {
         value={quantity}
         onChange={(event) => setQuantity(Number(event.target.value))}
       />
-      <div className="picker__total"><span>Package price</span><strong>${price.toFixed(2)}</strong></div>
-      <p className="checkout-note">Minimum package price: ${minimumCheckoutUsd.toFixed(2)}. Payment provider fees are added at checkout.</p>
+      <div className="picker__total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+      <p className="checkout-note">We cover payment processing fees. Your wallet may charge a fee to send crypto.</p>
       <Link className="button button--coral button--wide" href={`/order?service=${service.slug}&quantity=${quantity}`}>
         Continue to checkout
       </Link>

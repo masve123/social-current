@@ -10,7 +10,7 @@ const generalFaq = [
   { question: "Can I cancel an order?", answer: "Orders enter processing quickly. Contact support immediately with your order number. We can only cancel when fulfillment has not begun." },
   { question: "Why does my account need to be public?", answer: "The provider must be able to access the public profile or post to deliver the service. You can make it private again after the order is complete." },
   { question: "How do refills work?", answer: "If a covered order drops during its stated refill period, send support the order number. We will verify the count and submit an eligible refill." },
-  { question: "Why is the crypto payment amount higher than the package price?", answer: "NOWPayments adds payment processing and network fees to the package price. The exact amount depends on the currency and network you select and appears before you send payment. Orders currently need a package price of at least $19.99." },
+  { question: "Are there extra fees at checkout?", answer: "We cover the payment provider's processing fees. The checkout converts the USD price into your selected cryptocurrency using a current exchange rate, so the coin amount can differ slightly. Your own wallet or exchange may charge a separate fee to send crypto." },
 ];
 
 export const metadata: Metadata = { title: "Social Media Growth FAQ", description: "Answers about Social Current delivery, privacy, refills, order tracking, and social media growth packages.", alternates: { canonical: "/faq" }, ...pageSocialMetadata("Social Media Growth FAQ", "Answers about Social Current delivery, privacy, refills, order tracking, and social media growth packages.", "/faq") };

@@ -54,7 +54,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
     event.preventDefault();
     if (price < minimumCheckoutUsd || (offer.customComments && comments.length < offerMin)) {
       setState("error");
-      setMessage(`This checkout needs at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity${offer.customComments ? " or add more comments" : ""} to continue.`);
+      setMessage(`Orders must total at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity${offer.customComments ? " or add more comments" : ""} to continue.`);
       return;
     }
     setState("loading");
@@ -137,8 +137,8 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         <div className="summary-row"><span>Audience</span><strong>{offer.audience}</strong></div>
         <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString()}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
-        <div className="summary-total"><span>Package price</span><strong>${price.toFixed(2)}</strong></div>
-        <p className="checkout-note">Minimum package price: ${minimumCheckoutUsd.toFixed(2)}. Payment provider fees are added during checkout and vary by currency and network. Review the final amount before paying.</p>
+        <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+        <p className="checkout-note">Provider processing fees are covered by us. Your crypto wallet may charge its own network fee to send payment.</p>
         <label className="checkout-consent">
           <input type="checkbox" required />
           <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>

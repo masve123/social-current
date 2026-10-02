@@ -1,9 +1,8 @@
 import { calculateOfferPrice, getServiceOffers, type SmmOffer } from "@/lib/smm-offers";
 import type { Service } from "@/lib/services";
 
-// NOWPayments' hosted checkout currently cannot quote our smaller orders.
-// Keep this guard in one place so the storefront and API show the same limit.
-export const minimumCheckoutUsd = 19.99;
+// The advertised minimum package price. Provider fees are paid from our proceeds.
+export const minimumCheckoutUsd = 4.99;
 
 export function getCheckoutMinimumQuantity(service: Service, offer: SmmOffer) {
   const step = offer.step ?? service.step;

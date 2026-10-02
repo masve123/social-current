@@ -131,7 +131,7 @@ const usaComments: SmmOffer = {
 
 export function getServiceOffers(service: Service): SmmOffer[] {
   switch (service.slug) {
-    case "instagram-followers": return [standard, { ...premium, max: 20000 }, usaFemale, usaMale, { ...europe, max: 2000 }];
+    case "instagram-followers": return [{ ...standard, protection: "30-day refill" }, { ...premium, max: 20000 }, usaFemale, usaMale, { ...europe, max: 2000 }];
     case "instagram-likes": return [standard, premium, usaEurope];
     case "instagram-views": return [standard];
     case "instagram-comments": return [standardComments, customComments, usaComments];

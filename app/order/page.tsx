@@ -12,7 +12,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
   const query = await searchParams;
   const quantity = query.quantity ? Number(query.quantity) : undefined;
   return (
-    <section className="page-hero page-hero--compact">
+    <section className="page-hero page-hero--compact checkout-page">
       <div className="shell">
         <span className="eyebrow">Build your package</span>
         <h1>Start your next <em>growth campaign.</em></h1>

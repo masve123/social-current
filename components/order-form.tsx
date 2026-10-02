@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, CheckCircle2, LoaderCircle, LockKeyhole } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
 import { services } from "@/lib/services";
@@ -54,12 +55,13 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
       const response = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email }),
+        body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, acceptedTerms: true }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "We could not place the order.");
       setState("success");
-      setMessage(`Order ${data.order} was created for $${data.amount}. Save this number to track delivery.`);
+      setMessage(`Order ${data.order} was created. Opening secure payment…`);
+      window.location.assign(data.checkout_url);
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "We could not place the order.");
@@ -128,12 +130,16 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString()}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
         <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+        <label className="checkout-consent">
+          <input type="checkbox" required />
+          <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>
+        </label>
         <button className="button button--coral button--wide" type="submit" disabled={state === "loading"}>
-          {state === "loading" ? <><LoaderCircle className="spin" /> Creating order</> : <>Continue <ArrowRight /></>}
+          {state === "loading" ? <><LoaderCircle className="spin" /> Opening payment</> : <>Pay securely <ArrowRight /></>}
         </button>
         <p className="secure-note"><LockKeyhole aria-hidden="true" /> Encrypted and private. No password required.</p>
         {message && <div className={`form-message form-message--${state}`} role="status">{state === "success" && <CheckCircle2 />} {message}</div>}
-        <p className="checkout-note">Provider fulfillment begins only after secure payment confirmation.</p>
+        <p className="checkout-note">Cryptocurrency network and processing fees are shown before payment. Fulfillment begins only after secure payment confirmation.</p>
       </aside>
     </form>
   );

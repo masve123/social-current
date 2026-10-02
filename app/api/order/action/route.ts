@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { readOrderToken } from "@/lib/order-token";
+import { findStoredOrder, updateProviderStatus } from "@/lib/order-store";
 import { requestPanelCancellation, requestPanelRefill } from "@/lib/smm";
 
 export const runtime = "nodejs";
@@ -12,13 +12,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Choose a valid order action." }, { status: 400 });
     }
 
-    const payload = readOrderToken(input.order);
+    const order = await findStoredOrder(input.order);
+    if (!order?.provider || !order.provider_order_id) {
+      return NextResponse.json({ error: "This order has not started delivery yet." }, { status: 409 });
+    }
+
     if (input.action === "refill") {
-      const result = await requestPanelRefill(payload.provider, payload.providerOrder);
+      const result = await requestPanelRefill(order.provider, order.provider_order_id);
       return NextResponse.json({ status: result.status || "Refill requested", request: result.refill });
     }
 
-    const result = await requestPanelCancellation(payload.provider, payload.providerOrder);
+    const result = await requestPanelCancellation(order.provider, order.provider_order_id);
+    await updateProviderStatus(input.order, result.status || "Cancellation requested");
     return NextResponse.json({ status: result.status || "Cancellation requested", request: result.cancel });
   } catch (error) {
     const message = error instanceof Error ? error.message : "The provider could not process this request.";

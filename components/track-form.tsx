@@ -5,8 +5,8 @@ import { RefreshCcw, Search, XCircle } from "lucide-react";
 
 type TrackResult = Record<string, string | boolean>;
 
-export function TrackForm() {
-  const [order, setOrder] = useState("");
+export function TrackForm({ initialOrder = "" }: { initialOrder?: string }) {
+  const [order, setOrder] = useState(initialOrder);
   const [result, setResult] = useState<TrackResult | null>(null);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);

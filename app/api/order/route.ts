@@ -1,12 +1,23 @@
-import { timingSafeEqual } from "node:crypto";
+import { after, NextRequest, NextResponse } from "next/server";
 
-import { NextRequest, NextResponse } from "next/server";
-import { assertOrderTokenReady, createOrderToken, readOrderToken } from "@/lib/order-token";
+import { createNowPaymentsInvoice, isPaidPaymentStatus } from "@/lib/nowpayments";
+import { fulfillPaidOrder } from "@/lib/order-processing";
+import {
+  attachPaymentInvoice,
+  allowCheckoutAttempt,
+  createPublicOrderId,
+  createStoredOrder,
+  findStoredOrder,
+  markInvoiceCreationFailed,
+  updateProviderStatus,
+} from "@/lib/order-store";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
 import { getService } from "@/lib/services";
-import { createPanelOrder, getPanelOrderStatus } from "@/lib/smm";
+import { getPanelOrderStatus } from "@/lib/smm";
+import { site } from "@/lib/site";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function allowedHosts(platform: string) {
   if (platform === "Instagram") return ["instagram.com", "www.instagram.com"];
@@ -14,16 +25,21 @@ function allowedHosts(platform: string) {
   return ["youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com"];
 }
 
-function fulfillmentAuthorized(request: NextRequest) {
-  const expected = process.env.SMM_FULFILLMENT_SECRET;
-  const supplied = request.headers.get("x-social-current-fulfillment");
-  if (!expected || !supplied) return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(supplied);
-  return a.length === b.length && timingSafeEqual(a, b);
+function customerStatus(paymentStatus: string, fulfillmentStatus: string, providerStatus?: string | null) {
+  if (["invoice_failed", "failed", "expired"].includes(paymentStatus)) return "Payment was not completed";
+  if (paymentStatus === "refunded") return "Payment refunded";
+  if (paymentStatus === "partially_paid") return "The payment is incomplete";
+  if (paymentStatus === "amount_mismatch" || fulfillmentStatus === "manual_review") return "Your order is being reviewed";
+  if (!isPaidPaymentStatus(paymentStatus)) return "Waiting for payment confirmation";
+  if (fulfillmentStatus === "queued_supplier_funds") return "Payment confirmed — queued for delivery";
+  if (fulfillmentStatus === "submitting") return "Payment confirmed — starting delivery";
+  if (providerStatus) return providerStatus;
+  if (fulfillmentStatus === "submitted") return "In progress";
+  return "Payment confirmed";
 }
 
 export async function POST(request: NextRequest) {
+  let publicId: string | undefined;
   try {
     const input = (await request.json()) as {
       serviceSlug?: string;
@@ -32,7 +48,15 @@ export async function POST(request: NextRequest) {
       link?: string;
       email?: string;
       comments?: string[];
+      acceptedTerms?: boolean;
     };
+    const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+    if (!await allowCheckoutAttempt(forwardedFor)) {
+      return NextResponse.json({ error: "Too many checkout attempts. Please try again later." }, { status: 429 });
+    }
+    if (input.acceptedTerms !== true) {
+      return NextResponse.json({ error: "Accept the terms and refund policy to continue." }, { status: 400 });
+    }
     const service = input.serviceSlug ? getService(input.serviceSlug) : undefined;
     if (!service) return NextResponse.json({ error: "Choose a valid service." }, { status: 400 });
     const offer = getServiceOffers(service).find((item) => item.id === input.offerId);
@@ -60,63 +84,95 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Enter a valid public ${service.platform} URL.` }, { status: 400 });
     }
 
-    if (!input.email || !/^\S+@\S+\.\S+$/.test(input.email)) {
+    const email = input.email?.trim().toLowerCase();
+    if (!email || email.length > 254 || !/^\S+@\S+\.\S+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
 
-    const amount = calculateOfferPrice(service, quantity, offer).toFixed(2);
-    if (!fulfillmentAuthorized(request)) {
-      return NextResponse.json(
-        { error: "Payment confirmation is required before this order can be fulfilled." },
-        { status: 402 },
-      );
-    }
-
-    assertOrderTokenReady();
-    const result = await createPanelOrder({
+    const amount = Number(calculateOfferPrice(service, quantity, offer).toFixed(2));
+    publicId = createPublicOrderId();
+    await createStoredOrder({
+      publicId,
+      email,
       serviceSlug: service.slug,
       offerId: offer.id,
       quantity,
-      link: target.toString(),
+      targetUrl: target.toString(),
       comments,
+      amountUsd: amount,
     });
-    const order = createOrderToken({
-      provider: result.provider,
-      providerOrder: result.providerOrder,
-      serviceSlug: service.slug,
-      offerId: offer.id,
+
+    const encodedOrder = encodeURIComponent(publicId);
+    const invoice = await createNowPaymentsInvoice({
+      orderId: publicId,
+      amountUsd: amount,
+      description: `${service.shortTitle} — ${offer.label} — ${quantity.toLocaleString()}`,
+      callbackUrl: `${site.url}/api/payments/nowpayments`,
+      successUrl: `${site.url}/order/complete?order=${encodedOrder}`,
+      cancelUrl: `${site.url}/order/cancelled?order=${encodedOrder}`,
     });
-    return NextResponse.json({ order, status: result.status, amount }, { status: 201 });
+    await attachPaymentInvoice(publicId, { invoiceId: String(invoice.id), checkoutUrl: invoice.invoice_url });
+
+    return NextResponse.json({
+      order: publicId,
+      amount: amount.toFixed(2),
+      checkout_url: invoice.invoice_url,
+    }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "The provider could not create this order.";
+    const message = error instanceof Error ? error.message : "The secure checkout could not be created.";
+    if (publicId) await markInvoiceCreationFailed(publicId, message).catch(() => undefined);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
 
 export async function GET(request: NextRequest) {
-  const order = request.nextUrl.searchParams.get("order")?.trim();
-  if (!order || order.length > 1024) {
+  const orderNumber = request.nextUrl.searchParams.get("order")?.trim();
+  if (!orderNumber || orderNumber.length > 1024) {
     return NextResponse.json({ error: "Enter a valid order number." }, { status: 400 });
   }
+
   try {
-    const payload = readOrderToken(order);
-    const service = getService(payload.serviceSlug);
+    let order = await findStoredOrder(orderNumber);
+    if (!order) return NextResponse.json({ error: "We could not find that order." }, { status: 404 });
+
+    if (isPaidPaymentStatus(order.payment_status) && ["awaiting_payment", "retry"].includes(order.fulfillment_status)) {
+      after(() => fulfillPaidOrder(orderNumber));
+    }
+
+    let startCount = "—";
+    let remains = "—";
+    if (order.provider && order.provider_order_id) {
+      try {
+        const providerResult = await getPanelOrderStatus(order.provider, order.provider_order_id);
+        if (providerResult.status && providerResult.status !== order.provider_status) {
+          order = await updateProviderStatus(orderNumber, providerResult.status) || order;
+        }
+        startCount = providerResult.start_count || "—";
+        remains = providerResult.remains || "—";
+      } catch {
+        // Keep the last known status when the supplier is temporarily unavailable.
+      }
+    }
+
+    const service = getService(order.service_slug);
     if (!service) throw new Error("This order references an unavailable service.");
-    const offer = getServiceOffer(service, payload.offerId);
-    const result = await getPanelOrderStatus(payload.provider, payload.providerOrder);
-    const status = result.status || "Pending";
+    const offer = getServiceOffer(service, order.offer_id);
+    const status = customerStatus(order.payment_status, order.fulfillment_status, order.provider_status);
     return NextResponse.json({
-      order,
+      order: order.public_id,
       service: service.shortTitle,
       package: offer.label,
+      amount: `$${Number(order.amount_usd).toFixed(2)}`,
       status,
-      start_count: result.start_count || "—",
-      remains: result.remains || "—",
-      can_refill: offer.protection.toLowerCase().includes("refill") && ["Completed", "Partial"].includes(status),
-      can_cancel: ["Pending", "In progress", "Processing"].includes(status),
+      payment_status: order.payment_status,
+      fulfillment_status: order.fulfillment_status,
+      start_count: startCount,
+      remains,
+      can_refill: Boolean(order.provider_order_id) && offer.protection.toLowerCase().includes("refill") && ["Completed", "Partial"].includes(order.provider_status || ""),
+      can_cancel: Boolean(order.provider_order_id) && ["Pending", "In progress", "Processing"].includes(order.provider_status || ""),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "The provider could not find this order.";
+    const message = error instanceof Error ? error.message : "We could not find that order.";
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

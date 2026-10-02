@@ -8,7 +8,7 @@ import { getCheckoutMinimumQuantity, minimumCheckoutUsd } from "@/lib/checkout-p
 import { services } from "@/lib/services";
 import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
 
-type ProfileCheck = { status: "verified" | "not_found" | "unavailable" | "invalid"; url?: string; displayName?: string };
+type ProfileCheck = { status: "verified" | "not_found" | "private" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
 export function OrderForm({ initialService, initialQuantity }: { initialService?: string; initialQuantity?: number }) {
   const fallback = services[0];
@@ -88,9 +88,9 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (profileService && (!parsedProfile || profileCheck?.status === "not_found")) {
+    if (profileService && (!parsedProfile || profileCheck?.status === "not_found" || profileCheck?.status === "private")) {
       setState("error");
-      setMessage(profileCheck?.status === "not_found" ? "That profile could not be found. Check the username before paying." : "Enter a valid profile username or URL.");
+      setMessage(profileCheck?.status === "private" ? "Make this profile public before ordering." : profileCheck?.status === "not_found" ? "That profile could not be found. Check the username before paying." : "Enter a valid profile username or URL.");
       return;
     }
     if (price < minimumCheckoutUsd || (offer.customComments && comments.length < offerMin)) {
@@ -178,7 +178,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
             <label><span>{profileService ? `${service.platform} username or profile URL` : "Public post or video URL"}</span><input type={profileService ? "text" : "url"} value={link} onChange={(event) => { setLink(event.target.value); setProfileCheck(null); setCheckingProfile(false); }} placeholder={profileService ? "@yourusername" : `https://${service.platform === "Instagram" ? "instagram.com/p/..." : service.platform === "TikTok" ? "tiktok.com/@user/video/..." : "youtube.com/watch?v=..."}`} autoComplete="off" required /></label>
             {profileService && link.trim() && (
               <div className={`profile-check profile-check--${checkingProfile ? "checking" : profileCheck?.status || (parsedProfile ? "checking" : "invalid")}`} role="status">
-                {checkingProfile || (!profileCheck && parsedProfile) ? "Checking this public profile…" : profileCheck?.status === "verified" ? `Profile found${profileCheck.displayName ? `: ${profileCheck.displayName}` : ""}` : profileCheck?.status === "not_found" ? "Profile not found. Check the username." : !parsedProfile ? "Enter a valid username or profile URL." : "We could not verify automatically. Confirm the profile before paying."}
+                {checkingProfile || (!profileCheck && parsedProfile) ? "Checking this public profile…" : profileCheck?.status === "verified" ? `Profile found${profileCheck.displayName ? `: ${profileCheck.displayName}` : ""}` : profileCheck?.status === "private" ? "This profile is private. Make it public before ordering." : profileCheck?.status === "not_found" ? "Profile not found. Check the username." : !parsedProfile ? "Enter a valid username or profile URL." : "We could not verify automatically. Confirm the profile before paying."}
                 {parsedProfile && profileCheck?.status !== "not_found" && <a href={parsedProfile.url} target="_blank" rel="noopener noreferrer">View profile <ExternalLink aria-hidden="true" /></a>}
               </div>
             )}

@@ -93,8 +93,8 @@ export async function POST(request: NextRequest) {
     }
     if (profileTarget) {
       const profile = await verifyProfile(service.platform, profileTarget.url);
-      if (profile.status === "not_found") {
-        return NextResponse.json({ error: "That profile could not be found. Check the username before paying." }, { status: 400 });
+      if (profile.status === "not_found" || profile.status === "private") {
+        return NextResponse.json({ error: profile.status === "private" ? "Make this profile public before ordering." : "That profile could not be found. Check the username before paying." }, { status: 400 });
       }
     }
 

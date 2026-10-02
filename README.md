@@ -53,6 +53,10 @@ Paid orders are submitted automatically when the supplier has enough balance. Ot
 
 Verify `getsocialcurrent.com` in Resend and set `RESEND_API_KEY`. Payment and fulfillment emails are sent from `orders@getsocialcurrent.com`. Checkout and fulfillment continue to work if email is not configured.
 
+### Profile checks
+
+Follower and subscriber checkout accepts a username or public profile URL. TikTok and YouTube use their public profile pages for a best-effort check. Instagram often redirects server requests to login, so add an optional `HIKER_API_KEY` in Vercel for reliable Instagram username and public/private checks. The server calls HikerAPI's documented `GET /v1/user/by/username` endpoint; the key is never sent to the browser. Without a key or when a platform blocks the check, checkout asks the buyer to open and confirm the profile rather than claiming it was verified.
+
 ### 5. Operations queue
 
 Open `/admin/orders` and enter `SMM_FULFILLMENT_SECRET`. The page lists paid orders that need attention. After adding supplier funds, use **Retry** on orders marked `queued_supplier_funds`. For `manual_review`, first check the SMM World dashboard for a matching order, then use **Checked — retry** only when no supplier order exists.

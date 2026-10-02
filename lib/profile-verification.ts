@@ -12,6 +12,27 @@ export async function verifyProfile(platform: Platform, input: string) {
   const target = parseProfileTarget(platform, input);
   if (!target) return { status: "invalid" as const };
 
+  if (platform === "Instagram" && process.env.HIKER_API_KEY) {
+    try {
+      const url = new URL("https://api.hikerapi.com/v1/user/by/username");
+      url.searchParams.set("username", target.handle);
+      const response = await fetch(url, {
+        headers: { "x-access-key": process.env.HIKER_API_KEY },
+        cache: "no-store",
+        signal: AbortSignal.timeout(6500),
+      });
+      if (response.status === 404) return { status: "not_found" as const, ...target };
+      if (response.ok) {
+        const profile = await response.json() as { username?: string; full_name?: string; is_private?: boolean };
+        if (profile.username?.toLowerCase() === target.handle.toLowerCase()) {
+          return { status: profile.is_private ? "private" as const : "verified" as const, ...target, displayName: profile.full_name || profile.username };
+        }
+      }
+    } catch {
+      // The public-page check below remains available when the profile API is down.
+    }
+  }
+
   try {
     const response = await fetch(target.url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; SocialCurrentProfileCheck/1.0)" },

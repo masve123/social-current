@@ -33,6 +33,7 @@ export async function createNowPaymentsInvoice(input: {
   callbackUrl: string;
   successUrl: string;
   cancelUrl: string;
+  payCurrency?: "usdtbsc";
 }) {
   const response = await fetch(`${endpoint}/invoice`, {
     method: "POST",
@@ -43,6 +44,7 @@ export async function createNowPaymentsInvoice(input: {
     body: JSON.stringify({
       price_amount: Number(input.amountUsd.toFixed(2)),
       price_currency: "usd",
+      ...(input.payCurrency ? { pay_currency: input.payCurrency } : {}),
       order_id: input.orderId,
       order_description: input.description,
       ipn_callback_url: input.callbackUrl,

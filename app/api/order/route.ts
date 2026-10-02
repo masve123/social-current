@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
       email?: string;
       comments?: string[];
       acceptedTerms?: boolean;
+      paymentMethod?: "usdtbsc" | "any";
     };
     const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
     if (!await allowCheckoutAttempt(forwardedFor)) {
@@ -57,6 +58,9 @@ export async function POST(request: NextRequest) {
     }
     if (input.acceptedTerms !== true) {
       return NextResponse.json({ error: "Accept the terms and refund policy to continue." }, { status: 400 });
+    }
+    if (input.paymentMethod !== undefined && !["usdtbsc", "any"].includes(input.paymentMethod)) {
+      return NextResponse.json({ error: "Choose a valid payment method." }, { status: 400 });
     }
     const service = input.serviceSlug ? getService(input.serviceSlug) : undefined;
     if (!service) return NextResponse.json({ error: "Choose a valid service." }, { status: 400 });
@@ -114,6 +118,7 @@ export async function POST(request: NextRequest) {
       callbackUrl: `${site.url}/api/payments/nowpayments`,
       successUrl: `${site.url}/order/complete?order=${encodedOrder}`,
       cancelUrl: `${site.url}/order/cancelled?order=${encodedOrder}`,
+      payCurrency: input.paymentMethod === "usdtbsc" ? "usdtbsc" : undefined,
     });
     await attachPaymentInvoice(publicId, { invoiceId: String(invoice.id), checkoutUrl: invoice.invoice_url });
 

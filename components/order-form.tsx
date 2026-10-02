@@ -26,6 +26,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
   const [commentsText, setCommentsText] = useState("");
   const [link, setLink] = useState("");
   const [email, setEmail] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"usdtbsc" | "any">("usdtbsc");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const comments = useMemo(() => commentsText.split("\n").map((item) => item.trim()).filter(Boolean), [commentsText]);
@@ -63,7 +64,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
       const response = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, acceptedTerms: true }),
+        body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, paymentMethod, acceptedTerms: true }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "We could not place the order.");
@@ -138,6 +139,18 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString()}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
         <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+        <fieldset className="payment-methods">
+          <legend>How would you like to pay?</legend>
+          <label className={paymentMethod === "usdtbsc" ? "payment-methods__option payment-methods__option--active" : "payment-methods__option"}>
+            <input type="radio" name="payment-method" value="usdtbsc" checked={paymentMethod === "usdtbsc"} onChange={() => setPaymentMethod("usdtbsc")} />
+            <span><strong>USDT on BNB Smart Chain</strong><small>BSC network · Suggested</small></span>
+          </label>
+          <label className={paymentMethod === "any" ? "payment-methods__option payment-methods__option--active" : "payment-methods__option"}>
+            <input type="radio" name="payment-method" value="any" checked={paymentMethod === "any"} onChange={() => setPaymentMethod("any")} />
+            <span><strong>Other cryptocurrency</strong><small>Choose a supported coin at payment</small></span>
+          </label>
+        </fieldset>
+        {paymentMethod === "usdtbsc" && <p className="checkout-note">Send USDT on the BNB Smart Chain network only. Other networks cannot be used for this option.</p>}
         <p className="checkout-note">Provider processing fees are covered by us. Your crypto wallet may charge its own network fee to send payment.</p>
         <label className="checkout-consent">
           <input type="checkbox" required />

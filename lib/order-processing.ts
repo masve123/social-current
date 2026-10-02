@@ -47,7 +47,7 @@ export async function fulfillPaidOrder(publicId: string) {
       const queued = await markOrderQueued(publicId, reason, wholesaleCost);
       if (queued) {
         await Promise.allSettled([
-          sendOrderUpdate(queued, "Payment confirmed", "Your order is queued and will begin automatically after the next supplier balance update."),
+          sendOrderUpdate(queued, "Payment confirmed", "Your order is queued for delivery. We will start it after supplier funds are available."),
           sendSupplierBalanceAlert(queued, reason),
         ]);
       }

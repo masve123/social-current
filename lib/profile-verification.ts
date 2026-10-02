@@ -20,13 +20,13 @@ export async function verifyProfile(platform: Platform, input: string) {
       signal: AbortSignal.timeout(6500),
     });
     if (response.status === 404) return { status: "not_found" as const, ...target };
-    if (!response.ok) return { status: "unavailable" as const, ...target };
+    if (!response.ok) return { status: "unavailable" as const, ...target, upstreamStatus: response.status };
     const html = await response.text();
     const title = metaContent(html, "og:title");
 
     if (platform === "Instagram") {
       const verified = Boolean(title && title.toLowerCase().includes(`(@${target.handle.toLowerCase()})`));
-      return { status: verified ? "verified" as const : "unavailable" as const, ...target, displayName: verified ? title?.split(" (@")[0] : undefined };
+      return { status: verified ? "verified" as const : "unavailable" as const, ...target, displayName: verified ? title?.split(" (@")[0] : undefined, upstreamStatus: response.status };
     }
     if (platform === "TikTok") {
       const detail = html.match(/"webapp\.user-detail":\{"userInfo":\{"user":\{[^}]*"uniqueId":"([^"]+)"/);

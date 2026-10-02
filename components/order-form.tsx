@@ -133,7 +133,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         </button>
         <p className="secure-note"><LockKeyhole aria-hidden="true" /> Encrypted and private. No password required.</p>
         {message && <div className={`form-message form-message--${state}`} role="status">{state === "success" && <CheckCircle2 />} {message}</div>}
-        <p className="checkout-note">Provider fulfillment stays in preview mode until payment confirmation, API keys, and service routes are configured.</p>
+        <p className="checkout-note">Provider fulfillment begins only after secure payment confirmation.</p>
       </aside>
     </form>
   );

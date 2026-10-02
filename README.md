@@ -22,8 +22,7 @@ The server adapter includes service discovery, balance checks, order creation, s
 2. Generate strong values for `ORDER_TOKEN_SECRET` and `SMM_FULFILLMENT_SECRET`.
 3. Inspect the catalog with `GET /api/admin/smm?provider=smmworld&action=services&q=instagram%20followers` and an `Authorization: Bearer SMM_FULFILLMENT_SECRET` header. Use `action=balance` to check the account balance.
 4. Storefront service IDs are versioned in `lib/smm-routes.ts` because they are configuration rather than secrets.
-5. Keep `SMM_LIVE_ORDERING=false` while testing the checkout. Preview orders never spend provider balance.
-6. Have the payment webhook call `POST /api/order` with `x-social-current-fulfillment: SMM_FULFILLMENT_SECRET`. Set `SMM_LIVE_ORDERING=true` only after that payment flow is in place.
+5. Have the payment webhook call `POST /api/order` with `x-social-current-fulfillment: SMM_FULFILLMENT_SECRET`. Requests without payment confirmation cannot spend provider balance.
 
 After mapping services, request `action=routes` from the admin endpoint to see the current provider service name, wholesale cost at the storefront base quantity, retail price, gross margin, and refill/cancel support for every mapped package.
 

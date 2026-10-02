@@ -65,15 +65,6 @@ export async function POST(request: NextRequest) {
     }
 
     const amount = calculateOfferPrice(service, quantity, offer).toFixed(2);
-    if (process.env.SMM_LIVE_ORDERING !== "true") {
-      return NextResponse.json({
-        order: `PREVIEW-${Date.now().toString().slice(-6)}`,
-        preview: true,
-        amount,
-        message: "Preview mode is active. No provider order was submitted.",
-      });
-    }
-
     if (!fulfillmentAuthorized(request)) {
       return NextResponse.json(
         { error: "Payment confirmation is required before this order can be fulfilled." },
@@ -106,9 +97,6 @@ export async function GET(request: NextRequest) {
   const order = request.nextUrl.searchParams.get("order")?.trim();
   if (!order || order.length > 1024) {
     return NextResponse.json({ error: "Enter a valid order number." }, { status: 400 });
-  }
-  if (order.startsWith("PREVIEW-")) {
-    return NextResponse.json({ status: "Preview", order, remains: "No live delivery", can_refill: false, can_cancel: false });
   }
   try {
     const payload = readOrderToken(order);

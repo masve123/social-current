@@ -109,11 +109,6 @@ export async function fulfillPaidOrder(publicId: string) {
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : "The supplier rejected this order.";
-    if (/balance|funds|credit/i.test(reason)) {
-      const queued = await markOrderQueued(publicId, reason, wholesaleCost);
-      if (queued) await Promise.allSettled([sendSupplierBalanceAlert(queued, reason)]);
-      return;
-    }
     const reviewed = await markOrderManualReview(publicId, `${reason} Check the supplier dashboard before retrying to avoid a duplicate order.`);
     if (reviewed) await Promise.allSettled([
       sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is checking delivery before taking another action."),

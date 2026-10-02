@@ -279,7 +279,7 @@ export async function markOrderManualReview(publicId: string, reason: string) {
   const [order] = await sql<StoredOrder[]>`
     UPDATE social_current_orders
     SET fulfillment_status = 'manual_review', failure_reason = ${reason}, updated_at = NOW()
-    WHERE public_id = ${publicId}
+    WHERE public_id = ${publicId} AND provider_order_id IS NULL
     RETURNING *
   `;
   return order;

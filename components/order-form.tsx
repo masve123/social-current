@@ -1,11 +1,14 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, LoaderCircle, LockKeyhole } from "lucide-react";
+import { ArrowRight, CheckCircle2, ExternalLink, LoaderCircle, LockKeyhole } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
 import { getCheckoutMinimumQuantity, minimumCheckoutUsd } from "@/lib/checkout-pricing";
 import { services } from "@/lib/services";
+import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
+
+type ProfileCheck = { status: "verified" | "not_found" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
 export function OrderForm({ initialService, initialQuantity }: { initialService?: string; initialQuantity?: number }) {
   const fallback = services[0];
@@ -29,9 +32,38 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
   const [paymentMethod, setPaymentMethod] = useState<"usdtbsc" | "any">("usdtbsc");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [profileCheck, setProfileCheck] = useState<ProfileCheck | null>(null);
+  const [checkingProfile, setCheckingProfile] = useState(false);
   const comments = useMemo(() => commentsText.split("\n").map((item) => item.trim()).filter(Boolean), [commentsText]);
   const pricedQuantity = offer.customComments ? Math.max(offerMin, comments.length) : quantity;
   const price = calculateOfferPrice(service, pricedQuantity, offer);
+  const profileService = isProfileService(service);
+  const parsedProfile = profileService ? parseProfileTarget(service.platform, link) : null;
+  const quantityPresets = [...new Set([offerMin, service.baseQuantity, service.baseQuantity * 2, service.baseQuantity * 5]
+    .map((value) => Math.min(offerMax, Math.max(offerMin, Math.round(value / offerStep) * offerStep))))];
+
+  useEffect(() => {
+    if (!profileService || !link.trim() || !parsedProfile) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setCheckingProfile(true);
+      try {
+        const response = await fetch("/api/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform: service.platform, target: link }),
+          signal: controller.signal,
+        });
+        const result = await response.json() as ProfileCheck;
+        if (!controller.signal.aborted) setProfileCheck(result);
+      } catch {
+        if (!controller.signal.aborted) setProfileCheck({ status: "unavailable" });
+      } finally {
+        if (!controller.signal.aborted) setCheckingProfile(false);
+      }
+    }, 600);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [link, parsedProfile?.url, profileService, service.platform]);
 
   function changeService(slug: string) {
     const next = services.find((item) => item.slug === slug) || fallback;
@@ -39,6 +71,9 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
     setOfferId(getServiceOffers(next)[0].id);
     setQuantity(Math.max(next.baseQuantity, getCheckoutMinimumQuantity(next, getServiceOffers(next)[0])));
     setCommentsText("");
+    setLink("");
+    setProfileCheck(null);
+    setCheckingProfile(false);
     setState("idle");
   }
 
@@ -53,6 +88,11 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (profileService && (!parsedProfile || profileCheck?.status === "not_found")) {
+      setState("error");
+      setMessage(profileCheck?.status === "not_found" ? "That profile could not be found. Check the username before paying." : "Enter a valid profile username or URL.");
+      return;
+    }
     if (price < minimumCheckoutUsd || (offer.customComments && comments.length < offerMin)) {
       setState("error");
       setMessage(`Orders must total at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity${offer.customComments ? " or add more comments" : ""} to continue.`);
@@ -117,6 +157,13 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
           </label>
         ) : (
           <>
+            <div className="quantity-presets" aria-label="Popular quantities">
+              {quantityPresets.map((preset) => (
+                <button key={preset} type="button" aria-pressed={quantity === preset} onClick={() => setQuantity(preset)}>
+                  <strong>{preset.toLocaleString()}</strong><small>${calculateOfferPrice(service, preset, offer).toFixed(2)}</small>
+                </button>
+              ))}
+            </div>
             <label className="range-label" htmlFor="order-quantity"><span>Quantity</span><strong>{quantity.toLocaleString()}</strong></label>
             <input id="order-quantity" className="range" type="range" min={offerMin} max={offerMax} step={offerStep} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />
           </>
@@ -124,11 +171,19 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
 
         <div className="form-section form-section--spaced">
           <span className="step-number">04</span>
-          <div><h2>Where should we deliver?</h2><p>Your account or post needs to be public during delivery.</p></div>
+          <div><h2>Where should we deliver?</h2><p>{profileService ? "Enter your username. We will check the public profile before payment when the platform allows it." : "Paste the public post or video URL. It needs to remain public during delivery."}</p></div>
         </div>
         <div className="field-grid">
-          <label><span>Public profile or post URL</span><input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://instagram.com/yourprofile" required /></label>
-          <label><span>Order email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
+          <div className="target-field">
+            <label><span>{profileService ? `${service.platform} username or profile URL` : "Public post or video URL"}</span><input type={profileService ? "text" : "url"} value={link} onChange={(event) => { setLink(event.target.value); setProfileCheck(null); setCheckingProfile(false); }} placeholder={profileService ? "@yourusername" : `https://${service.platform === "Instagram" ? "instagram.com/p/..." : service.platform === "TikTok" ? "tiktok.com/@user/video/..." : "youtube.com/watch?v=..."}`} autoComplete="off" required /></label>
+            {profileService && link.trim() && (
+              <div className={`profile-check profile-check--${checkingProfile ? "checking" : profileCheck?.status || (parsedProfile ? "checking" : "invalid")}`} role="status">
+                {checkingProfile || (!profileCheck && parsedProfile) ? "Checking this public profile…" : profileCheck?.status === "verified" ? `Profile found${profileCheck.displayName ? `: ${profileCheck.displayName}` : ""}` : profileCheck?.status === "not_found" ? "Profile not found. Check the username." : !parsedProfile ? "Enter a valid username or profile URL." : "We could not verify automatically. Confirm the profile before paying."}
+                {parsedProfile && profileCheck?.status !== "not_found" && <a href={parsedProfile.url} target="_blank" rel="noopener noreferrer">View profile <ExternalLink aria-hidden="true" /></a>}
+              </div>
+            )}
+          </div>
+          <label><span>Email for order updates</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
         </div>
       </div>
       <aside className="order-summary">
@@ -151,7 +206,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
           </label>
         </fieldset>
         {paymentMethod === "usdtbsc" && <p className="checkout-note">Send USDT on the BNB Smart Chain network only. Other networks cannot be used for this option.</p>}
-        <p className="checkout-note">Provider processing fees are covered by us. Your crypto wallet may charge its own network fee to send payment.</p>
+        <p className="checkout-note">No account or password needed. We cover provider processing fees; your wallet may charge a network fee to send crypto.</p>
         <label className="checkout-consent">
           <input type="checkbox" required />
           <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>

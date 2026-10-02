@@ -16,7 +16,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
       <div className="shell">
         <span className="eyebrow">Build your package</span>
         <h1>Start your next <em>growth campaign.</em></h1>
-        <p>Three quick choices. No password. Clear delivery timing.</p>
+        <p>Choose your package, confirm your public profile or post, then pay securely. No password or account needed.</p>
         <OrderForm initialService={query.service} initialQuantity={Number.isFinite(quantity) ? quantity : undefined} />
       </div>
     </section>

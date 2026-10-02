@@ -15,6 +15,8 @@ import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/sm
 import { minimumCheckoutUsd } from "@/lib/checkout-pricing";
 import { getService } from "@/lib/services";
 import { getPanelOrderStatus } from "@/lib/smm";
+import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
+import { verifyProfile } from "@/lib/profile-verification";
 import { site } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -79,14 +81,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: detail }, { status: 400 });
     }
 
+    const profileTarget = isProfileService(service) ? parseProfileTarget(service.platform, input.link || "") : null;
     let target: URL;
     try {
-      target = new URL(input.link || "");
+      target = new URL(profileTarget?.url || input.link || "");
     } catch {
       return NextResponse.json({ error: "Enter a complete public profile or post URL." }, { status: 400 });
     }
-    if (target.protocol !== "https:" || !allowedHosts(service.platform).includes(target.hostname.toLowerCase())) {
+    if ((isProfileService(service) && !profileTarget) || target.protocol !== "https:" || !allowedHosts(service.platform).includes(target.hostname.toLowerCase())) {
       return NextResponse.json({ error: `Enter a valid public ${service.platform} URL.` }, { status: 400 });
+    }
+    if (profileTarget) {
+      const profile = await verifyProfile(service.platform, profileTarget.url);
+      if (profile.status === "not_found") {
+        return NextResponse.json({ error: "That profile could not be found. Check the username before paying." }, { status: 400 });
+      }
     }
 
     const email = input.email?.trim().toLowerCase();

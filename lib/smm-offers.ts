@@ -139,7 +139,7 @@ export function getServiceOffers(service: Service): SmmOffer[] {
     case "tiktok-likes": return [standard, premium];
     case "tiktok-views": return [standard];
     case "tiktok-comments": return [standardComments, customComments];
-    case "youtube-subscribers": return [standard, { ...premium, max: 10000 }];
+    case "youtube-subscribers": return [{ ...standard, protection: "No refill" }, { ...premium, max: 10000 }];
     case "youtube-likes": return [standard, premium, { ...usa, max: 20000 }];
     case "youtube-views": return [standard, highRetention, { ...usa, min: 1000, max: 100000 }];
     case "youtube-comments": return [standardComments, customComments, { ...usaComments, max: 2000 }];

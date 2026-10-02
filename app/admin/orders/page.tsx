@@ -8,8 +8,8 @@ export default function AdminOrdersPage() {
     <section className="page-hero page-hero--compact">
       <div className="shell">
         <span className="eyebrow">Private operations</span>
-        <h1>Review the fulfillment <em>queue.</em></h1>
-        <p>Paid orders appear here when supplier funds are low or manual review is required.</p>
+        <h1>Review orders and <em>messages.</em></h1>
+        <p>Paid orders needing attention and customer support requests appear here.</p>
         <AdminOrders />
       </div>
     </section>

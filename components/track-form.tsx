@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { RefreshCcw, Search, XCircle } from "lucide-react";
 
@@ -56,6 +57,7 @@ export function TrackForm({ initialOrder = "" }: { initialOrder?: string }) {
               {result.can_cancel && <button className="button button--cream" type="button" disabled={working} onClick={() => requestAction("cancel")}><XCircle /> Request cancellation</button>}
             </div>
           )}
+          <Link className="track-card__support" href={`/contact?order=${encodeURIComponent(order)}`}>Ask for help with this order</Link>
         </>
       )}
     </div>

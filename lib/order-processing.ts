@@ -1,9 +1,11 @@
-import { sendOrderUpdate, sendSupplierBalanceAlert } from "@/lib/email";
+import { sendFulfillmentRetryAlert, sendFulfillmentReviewAlert, sendOrderUpdate, sendSupplierBalanceAlert } from "@/lib/email";
 import {
   claimOrderForFulfillment,
   markOrderManualReview,
   markOrderQueued,
+  markOrderRetryPending,
   markOrderSubmitted,
+  markSupplierRequestStarted,
 } from "@/lib/order-store";
 import { getService } from "@/lib/services";
 import {
@@ -20,14 +22,25 @@ export async function fulfillPaidOrder(publicId: string) {
   const service = getService(order.service_slug);
   if (!service) {
     const reviewed = await markOrderManualReview(publicId, "The storefront service is no longer available.");
-    if (reviewed) await Promise.allSettled([sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is reviewing the fulfillment route before delivery starts."), sendSupplierBalanceAlert(reviewed, reviewed.failure_reason || "Missing storefront service.")]);
+    if (reviewed) await Promise.allSettled([sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is reviewing the fulfillment route before delivery starts."), sendFulfillmentReviewAlert(reviewed)]);
     return;
   }
 
-  const route = getConfiguredRoutes(order.service_slug, order.offer_id)[0];
+  let route;
+  try {
+    route = getConfiguredRoutes(order.service_slug, order.offer_id)[0];
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "No supplier route is configured for this package.";
+    const reviewed = await markOrderManualReview(publicId, reason);
+    if (reviewed) await Promise.allSettled([
+      sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is reviewing the fulfillment route before delivery starts."),
+      sendFulfillmentReviewAlert(reviewed),
+    ]);
+    return;
+  }
   if (!route) {
     const reviewed = await markOrderManualReview(publicId, "No supplier route is configured for this package.");
-    if (reviewed) await Promise.allSettled([sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is reviewing the fulfillment route before delivery starts."), sendSupplierBalanceAlert(reviewed, reviewed.failure_reason || "Missing supplier route.")]);
+    if (reviewed) await Promise.allSettled([sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is reviewing the fulfillment route before delivery starts."), sendFulfillmentReviewAlert(reviewed)]);
     return;
   }
 
@@ -38,8 +51,21 @@ export async function fulfillPaidOrder(publicId: string) {
       getPanelServices(route.provider),
     ]);
     const supplierService = catalog.find((item) => String(item.service) === route.serviceId);
+    if (!supplierService) {
+      const reviewed = await markOrderManualReview(publicId, `Supplier service ${route.serviceId} is not in the current catalog.`);
+      if (reviewed) await Promise.allSettled([
+        sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is checking the supplier service before delivery starts."),
+        sendFulfillmentReviewAlert(reviewed),
+      ]);
+      return;
+    }
     const rate = Number(supplierService?.rate);
     const balance = Number(balanceResult.balance);
+    if (!Number.isFinite(rate) || !Number.isFinite(balance)) {
+      const retry = await markOrderRetryPending(publicId, "Supplier pricing or balance is temporarily unavailable.");
+      if (retry) await Promise.allSettled([sendFulfillmentRetryAlert(retry)]);
+      return;
+    }
     if (Number.isFinite(rate)) wholesaleCost = (rate * order.quantity) / 1000;
 
     if (wholesaleCost !== undefined && Number.isFinite(balance) && balance < wholesaleCost) {
@@ -55,12 +81,14 @@ export async function fulfillPaidOrder(publicId: string) {
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : "The supplier balance could not be checked.";
-    const queued = await markOrderQueued(publicId, reason);
-    if (queued) await Promise.allSettled([sendSupplierBalanceAlert(queued, reason)]);
+    const retry = await markOrderRetryPending(publicId, reason);
+    if (retry) await Promise.allSettled([sendFulfillmentRetryAlert(retry)]);
     return;
   }
 
   try {
+    const started = await markSupplierRequestStarted(publicId);
+    if (!started) return;
     const result = await createPanelOrder({
       serviceSlug: order.service_slug,
       offerId: order.offer_id,
@@ -89,7 +117,7 @@ export async function fulfillPaidOrder(publicId: string) {
     const reviewed = await markOrderManualReview(publicId, `${reason} Check the supplier dashboard before retrying to avoid a duplicate order.`);
     if (reviewed) await Promise.allSettled([
       sendOrderUpdate(reviewed, "Your order is under review", "Payment is confirmed. Our team is checking delivery before taking another action."),
-      sendSupplierBalanceAlert(reviewed, reviewed.failure_reason || reason),
+      sendFulfillmentReviewAlert(reviewed),
     ]);
   }
 }

@@ -49,6 +49,12 @@ The server adapter includes service discovery, balance checks, order creation, s
 
 Paid orders are submitted automatically when the supplier has enough balance. Otherwise, they enter `queued_supplier_funds` without losing the customer's payment or creating a duplicate supplier order.
 
+### Recovery for interrupted supplier calls
+
+Set `CRON_SECRET` in Vercel (a random value at least 16 characters long) and redeploy. The scheduled `/api/cron/reconcile` endpoint runs daily at 06:00 UTC on all Vercel plans. Vercel sends the secret in its Authorization header. To run it manually, call the same endpoint with `Authorization: Bearer <CRON_SECRET>`. On Vercel Pro you can increase the schedule frequency in `vercel.json`; Hobby only allows daily schedules. Order tracking and the admin queue also detect interrupted submissions when opened.
+
+An interrupted order with no supplier request is safe to retry. Once a request might have reached SMM World, the order enters `manual_review`: check for a matching supplier order before choosing **Checked — retry**. Do not retry an ambiguous supplier submission automatically.
+
 ### 4. Optional order email
 
 Verify `getsocialcurrent.com` in Resend and set `RESEND_API_KEY`. Payment and fulfillment emails are sent from `orders@getsocialcurrent.com`. Checkout and fulfillment continue to work if email is not configured.
@@ -61,6 +67,8 @@ Follower and subscriber checkout accepts a username or public profile URL. TikTo
 
 Open `/admin/orders` and enter `SMM_FULFILLMENT_SECRET`. The page lists paid orders that need attention. After adding supplier funds, use **Retry** on orders marked `queued_supplier_funds`. For `manual_review`, first check the SMM World dashboard for a matching order, then use **Checked — retry** only when no supplier order exists.
 
+The same page shows customer support messages saved by `/contact`. You can reply using your own email client and mark requests resolved. Messages are stored in Postgres even when Resend is not configured.
+
 ## Order lifecycle
 
 1. The customer chooses a package and submits a public social URL.
@@ -69,7 +77,8 @@ Open `/admin/orders` and enter `SMM_FULFILLMENT_SECRET`. The page lists paid ord
 4. Confirmed payments atomically claim the order for fulfillment.
 5. The server checks SMM World service pricing and account balance.
 6. The order is submitted once, or safely queued when supplier funds are insufficient.
-7. `/track` reads the local payment state and refreshes the live supplier status.
+7. Interrupted requests are reconciled on tracking, in the admin queue, and by the daily cron. Ambiguous supplier submissions require manual verification before any retry.
+8. `/track` reads the local payment state and refreshes the live supplier status.
 
 ## SEO setup
 

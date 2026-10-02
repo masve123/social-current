@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 
 import { createNowPaymentsInvoice, isPaidPaymentStatus } from "@/lib/nowpayments";
 import { fulfillPaidOrder } from "@/lib/order-processing";
+import { recoverOrderIfStale } from "@/lib/fulfillment-recovery";
 import {
   attachPaymentInvoice,
   allowCheckoutAttempt,
@@ -35,6 +36,7 @@ function customerStatus(paymentStatus: string, fulfillmentStatus: string, provid
   if (paymentStatus === "amount_mismatch" || fulfillmentStatus === "manual_review") return "Your order is being reviewed";
   if (!isPaidPaymentStatus(paymentStatus)) return "Waiting for payment confirmation";
   if (fulfillmentStatus === "queued_supplier_funds") return "Payment confirmed — queued for delivery";
+  if (fulfillmentStatus === "retry") return "Payment confirmed — waiting for supplier connection";
   if (fulfillmentStatus === "submitting") return "Payment confirmed — starting delivery";
   if (providerStatus) return providerStatus;
   if (fulfillmentStatus === "submitted") return "In progress";
@@ -153,7 +155,12 @@ export async function GET(request: NextRequest) {
     let order = await findStoredOrder(orderNumber);
     if (!order) return NextResponse.json({ error: "We could not find that order." }, { status: 404 });
 
-    if (isPaidPaymentStatus(order.payment_status) && ["awaiting_payment", "retry"].includes(order.fulfillment_status)) {
+    if (order.fulfillment_status === "submitting") {
+      order = await recoverOrderIfStale(orderNumber) || order;
+    }
+
+    const retryDue = order.fulfillment_status === "retry" && Date.now() - new Date(order.updated_at).getTime() > 2 * 60 * 1000;
+    if (isPaidPaymentStatus(order.payment_status) && (order.fulfillment_status === "awaiting_payment" || retryDue)) {
       after(() => fulfillPaidOrder(orderNumber));
     }
 

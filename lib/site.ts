@@ -13,4 +13,5 @@ export const nav = [
   { href: "/tiktok-growth", label: "TikTok" },
   { href: "/youtube-growth", label: "YouTube" },
   { href: "/blog", label: "Growth notes" },
+  { href: "/contact", label: "Support" },
 ];

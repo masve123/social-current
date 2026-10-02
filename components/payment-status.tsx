@@ -53,6 +53,7 @@ export function PaymentStatus({ order }: { order: string }) {
             <div><dt>Package</dt><dd>{result.package}</dd></div>
           </dl>
           <Link className="button button--ink" href={`/track?order=${encodeURIComponent(order)}`}>Track this order</Link>
+          <Link className="payment-result__support" href={`/contact?order=${encodeURIComponent(order)}`}>Need help with this order?</Link>
         </>
       )}
     </div>

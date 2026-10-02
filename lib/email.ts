@@ -50,3 +50,25 @@ export async function sendSupplierBalanceAlert(order: StoredOrder, reason: strin
     </div>
   `);
 }
+
+export async function sendFulfillmentReviewAlert(order: StoredOrder) {
+  await sendEmail(site.email, `Fulfillment review needed — ${order.public_id}`, `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#20211e">
+      <h1 style="font-family:Georgia,serif;font-weight:400">Check the supplier dashboard</h1>
+      <p>${escapeHtml(order.failure_reason || "The supplier submission may have been interrupted.")}</p>
+      <p><strong>Order:</strong> ${escapeHtml(order.public_id)}</p>
+      <p>Resolve the issue before retrying. If the supplier request might have reached SMM World, check for a matching order first.</p>
+    </div>
+  `);
+}
+
+export async function sendFulfillmentRetryAlert(order: StoredOrder) {
+  await sendEmail(site.email, `Supplier connection needs attention — ${order.public_id}`, `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#20211e">
+      <h1 style="font-family:Georgia,serif;font-weight:400">A paid order is waiting for the supplier</h1>
+      <p>${escapeHtml(order.failure_reason || "The supplier check did not complete.")}</p>
+      <p><strong>Order:</strong> ${escapeHtml(order.public_id)}</p>
+      <p>No supplier order request was sent. The order can be retried safely.</p>
+    </div>
+  `);
+}

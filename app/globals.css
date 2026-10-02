@@ -326,6 +326,15 @@ input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 0; 
 .admin-order h2 { margin: 6px 0; font-family: var(--font-serif); font-size: 27px; font-weight: 400; }
 .admin-order p { margin: 0; font-size: 13px; }
 .admin-order small { display: block; margin-top: 10px; color: #9b3126; }
+.admin-support { margin-top: 60px; }
+.admin-support > h2 { font-family: var(--font-serif); font-size: 37px; font-weight: 400; }
+.admin-support__item { margin-top: 13px; padding: 22px; border: 1px solid var(--line); border-radius: 13px; background: var(--white); }
+.admin-support__heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
+.admin-support__heading span { color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.admin-support__heading h3 { margin: 4px 0 0; font-size: 16px; }
+.admin-support__item p { margin: 10px 0 0; color: #44453f; font-size: 12px; }
+.admin-support__item a { text-decoration: underline; text-underline-offset: 3px; }
+.admin-support__message { padding-top: 11px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Checkout keeps the chosen package visible and puts delivery first. */
 .selected-package { padding: 19px 21px; border: 1px solid #dfd9cc; border-radius: 14px; background: #f8f1e5; }
@@ -434,6 +443,12 @@ input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 0; 
 .payment-methods__option:hover { border-color: var(--mint); }
 input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea { border-radius: 10px; }
 .form-message { border-radius: 9px; }
+.contact-form__error { margin: 0 0 15px; color: #a83228; font-size: 12px; }
+.contact-form--success { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
+.contact-form--success h2 { margin: 0 0 8px; font-family: var(--font-serif); font-size: 37px; font-weight: 400; }
+.contact-form--success p { color: var(--muted); font-size: 14px; }
+.payment-result__support, .track-card__support { display: inline-block; margin-top: 20px; color: #9a362b; font-size: 12px; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.track-card__support { display: block; }
 
 @media (max-width: 560px) {
   .picker__follower-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

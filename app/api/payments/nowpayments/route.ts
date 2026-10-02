@@ -22,18 +22,9 @@ export async function POST(request: NextRequest) {
   }
 
   const publicId = typeof payload.order_id === "string" ? payload.order_id : "";
-  let paymentStatus = typeof payload.payment_status === "string" ? payload.payment_status.toLowerCase() : "unknown";
+  const paymentStatus = typeof payload.payment_status === "string" ? payload.payment_status.toLowerCase() : "unknown";
   const order = publicId ? await findStoredOrder(publicId) : undefined;
   if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
-
-  const statusRank = ["waiting", "confirming", "confirmed", "sending", "finished"];
-  const currentRank = statusRank.indexOf(order.payment_status);
-  const nextRank = statusRank.indexOf(paymentStatus);
-  if (isPaidPaymentStatus(order.payment_status) && !isPaidPaymentStatus(paymentStatus) && paymentStatus !== "refunded") {
-    paymentStatus = order.payment_status;
-  } else if (currentRank > nextRank && nextRank >= 0) {
-    paymentStatus = order.payment_status;
-  }
 
   const receivedAmount = Number(payload.price_amount);
   const expectedAmount = Number(order.amount_usd);
@@ -50,7 +41,7 @@ export async function POST(request: NextRequest) {
     amountMatches,
   });
 
-  if (updated && amountMatches && isPaidPaymentStatus(paymentStatus) && updated.fulfillment_status === "awaiting_payment") {
+  if (updated && amountMatches && isPaidPaymentStatus(updated.payment_status) && updated.fulfillment_status === "awaiting_payment") {
     after(() => fulfillPaidOrder(publicId));
   }
 

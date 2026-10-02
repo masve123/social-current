@@ -24,8 +24,13 @@ CREATE TABLE IF NOT EXISTS social_current_orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   paid_at TIMESTAMPTZ,
-  submitted_at TIMESTAMPTZ
+  submitted_at TIMESTAMPTZ,
+  supplier_request_started_at TIMESTAMPTZ,
+  fulfillment_version SMALLINT NOT NULL DEFAULT 1
 );
+
+ALTER TABLE social_current_orders ADD COLUMN IF NOT EXISTS supplier_request_started_at TIMESTAMPTZ;
+ALTER TABLE social_current_orders ADD COLUMN IF NOT EXISTS fulfillment_version SMALLINT NOT NULL DEFAULT 1;
 
 CREATE INDEX IF NOT EXISTS social_current_orders_payment_status_idx
 ON social_current_orders (payment_status, fulfillment_status, created_at);
@@ -39,6 +44,27 @@ CREATE TABLE IF NOT EXISTS social_current_payment_events (
 );
 
 CREATE TABLE IF NOT EXISTS social_current_checkout_attempts (
+  ip_hash TEXT NOT NULL,
+  window_start TIMESTAMPTZ NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (ip_hash, window_start)
+);
+
+CREATE TABLE IF NOT EXISTS social_current_support_requests (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  order_number TEXT,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS social_current_support_requests_status_created_idx
+ON social_current_support_requests (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS social_current_support_attempts (
   ip_hash TEXT NOT NULL,
   window_start TIMESTAMPTZ NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 1,

@@ -54,12 +54,22 @@ export async function ensureDatabase() {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           paid_at TIMESTAMPTZ,
-          submitted_at TIMESTAMPTZ
+          submitted_at TIMESTAMPTZ,
+          supplier_request_started_at TIMESTAMPTZ,
+          fulfillment_version SMALLINT NOT NULL DEFAULT 1
         )
       `;
       await sql`
         ALTER TABLE social_current_orders
         ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ
+      `;
+      await sql`
+        ALTER TABLE social_current_orders
+        ADD COLUMN IF NOT EXISTS supplier_request_started_at TIMESTAMPTZ
+      `;
+      await sql`
+        ALTER TABLE social_current_orders
+        ADD COLUMN IF NOT EXISTS fulfillment_version SMALLINT NOT NULL DEFAULT 1
       `;
       await sql`
         CREATE INDEX IF NOT EXISTS social_current_orders_payment_status_idx
@@ -76,6 +86,30 @@ export async function ensureDatabase() {
       `;
       await sql`
         CREATE TABLE IF NOT EXISTS social_current_checkout_attempts (
+          ip_hash TEXT NOT NULL,
+          window_start TIMESTAMPTZ NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 1,
+          PRIMARY KEY (ip_hash, window_start)
+        )
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS social_current_support_requests (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          order_number TEXT,
+          message TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`
+        CREATE INDEX IF NOT EXISTS social_current_support_requests_status_created_idx
+        ON social_current_support_requests (status, created_at DESC)
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS social_current_support_attempts (
           ip_hash TEXT NOT NULL,
           window_start TIMESTAMPTZ NOT NULL,
           attempts INTEGER NOT NULL DEFAULT 1,

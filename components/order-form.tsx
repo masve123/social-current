@@ -38,6 +38,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
   const pricedQuantity = offer.customComments ? Math.max(offerMin, comments.length) : quantity;
   const price = calculateOfferPrice(service, pricedQuantity, offer);
   const profileService = isProfileService(service);
+  const activeGoal = service.metric === "subscribers" ? "followers" : service.metric;
   const parsedProfile = profileService ? parseProfileTarget(service.platform, link) : null;
   const quantityPresets = [...new Set([offerMin, service.baseQuantity, service.baseQuantity * 2, service.baseQuantity * 5]
     .map((value) => Math.min(offerMax, Math.max(offerMin, Math.round(value / offerStep) * offerStep))))];
@@ -122,14 +123,25 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
       <div className="checkout__main">
         <div className="form-section">
           <span className="step-number">01</span>
-          <div><h2>Select a service</h2><p>Choose the platform and metric you want to grow.</p></div>
+          <div><h2>What do you need?</h2><p>Pick a goal, then choose the platform.</p></div>
         </div>
         <div className="service-options">
-          {services.map((item) => (
-            <button className={serviceSlug === item.slug ? "active" : ""} type="button" key={item.slug} onClick={() => changeService(item.slug)}>
-              <span>{item.platform}</span><strong>{item.metric}</strong>
-            </button>
-          ))}
+          <span className="service-options__label">Goal</span>
+          <div className="service-options__grid service-options__grid--goals">
+            {(["followers", "likes", "comments", "views"] as const).map((goal) => {
+              const metric = goal === "followers" && service.platform === "YouTube" ? "subscribers" : goal;
+              const next = services.find((item) => item.platform === service.platform && item.metric === metric);
+              return <button className={activeGoal === goal ? "active" : ""} type="button" key={goal} onClick={() => next && changeService(next.slug)} disabled={!next} aria-pressed={activeGoal === goal}>{goal === "followers" && service.platform === "YouTube" ? "Subscribers" : goal[0].toUpperCase() + goal.slice(1)}</button>;
+            })}
+          </div>
+          <span className="service-options__label">Platform</span>
+          <div className="service-options__grid service-options__grid--platforms">
+            {(["Instagram", "TikTok", "YouTube"] as const).map((platform) => {
+              const metric = activeGoal === "followers" && platform === "YouTube" ? "subscribers" : activeGoal;
+              const next = services.find((item) => item.platform === platform && item.metric === metric);
+              return <button className={service.platform === platform ? "active" : ""} type="button" key={platform} onClick={() => next && changeService(next.slug)} disabled={!next} aria-pressed={service.platform === platform}>{platform}</button>;
+            })}
+          </div>
         </div>
 
         <div className="form-section form-section--spaced">

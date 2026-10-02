@@ -137,8 +137,8 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         <div className="summary-row"><span>Audience</span><strong>{offer.audience}</strong></div>
         <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString()}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
-        <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
-        <p className="checkout-note">Minimum crypto checkout: ${minimumCheckoutUsd.toFixed(2)}. Available currencies and network minimums are shown by the payment provider.</p>
+        <div className="summary-total"><span>Package price</span><strong>${price.toFixed(2)}</strong></div>
+        <p className="checkout-note">Minimum package price: ${minimumCheckoutUsd.toFixed(2)}. Payment provider fees are added during checkout and vary by currency and network. Review the final amount before paying.</p>
         <label className="checkout-consent">
           <input type="checkbox" required />
           <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>
@@ -148,7 +148,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         </button>
         <p className="secure-note"><LockKeyhole aria-hidden="true" /> Encrypted and private. No password required.</p>
         {message && <div className={`form-message form-message--${state}`} role="status">{state === "success" && <CheckCircle2 />} {message}</div>}
-        <p className="checkout-note">Cryptocurrency network and processing fees are shown before payment. Fulfillment begins only after secure payment confirmation.</p>
+        <p className="checkout-note">Fulfillment begins only after secure payment confirmation.</p>
       </aside>
     </form>
   );

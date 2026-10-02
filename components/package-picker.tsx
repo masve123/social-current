@@ -47,8 +47,8 @@ export function PackagePicker({ service }: { service: Service }) {
         value={quantity}
         onChange={(event) => setQuantity(Number(event.target.value))}
       />
-      <div className="picker__total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
-      <p className="checkout-note">Minimum crypto checkout: ${minimumCheckoutUsd.toFixed(2)}</p>
+      <div className="picker__total"><span>Package price</span><strong>${price.toFixed(2)}</strong></div>
+      <p className="checkout-note">Minimum package price: ${minimumCheckoutUsd.toFixed(2)}. Payment provider fees are added at checkout.</p>
       <Link className="button button--coral button--wide" href={`/order?service=${service.slug}&quantity=${quantity}`}>
         Continue to checkout
       </Link>

@@ -327,6 +327,40 @@ input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 0; 
 .admin-order p { margin: 0; font-size: 13px; }
 .admin-order small { display: block; margin-top: 10px; color: #9b3126; }
 
+/* Checkout keeps the chosen package visible and puts delivery first. */
+.selected-package { padding: 19px 21px; border: 1px solid #dfd9cc; border-radius: 14px; background: #f8f1e5; }
+.selected-package__top, .selected-package__details { display: flex; align-items: center; justify-content: space-between; gap: 10px 20px; }
+.selected-package__top .eyebrow { margin: 0; color: #67665e; }
+.selected-package__top button { padding: 5px 0; border: 0; background: transparent; color: #9d3127; font-size: 12px; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.selected-package__details { flex-wrap: wrap; margin-top: 12px; }
+.selected-package__details strong { font-family: var(--font-serif), Georgia, serif; font-size: 25px; font-weight: 400; line-height: 1.1; }
+.selected-package__details span { color: #55564f; font-size: 12px; font-weight: 700; }
+#package-editor { margin-top: 28px; }
+.form-section--delivery { margin-top: 30px; }
+.package-edit-done { display: inline-flex; align-items: center; gap: 8px; margin-top: 30px; padding: 11px 15px; border: 1px solid var(--ink); border-radius: 10px; background: var(--ink); color: white; font-size: 12px; font-weight: 800; cursor: pointer; transition: transform .18s, background-color .18s; }
+.package-edit-done:hover { transform: translateY(-2px); background: #353630; }
+.package-edit-done svg { width: 15px; height: 15px; }
+.comments-field--selected { margin-top: 22px; }
+.comments-field > small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.picker__tier { display: grid; gap: 7px; margin-bottom: 20px; }
+.picker__tier label { font-size: 11px; font-weight: 800; }
+.picker__tier select { width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); cursor: pointer; }
+.picker__tier p, .picker__custom-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.picker__custom-note { margin: 8px 0 24px; }
+
+/* Softer shapes and tactile states across the buying journey. */
+.button, .finder__choices button, .service-options button, .quantity-presets button, .picker__presets button, .package-options > button, .payment-methods__option, .package-edit-done { border-radius: 10px; }
+.button:hover { box-shadow: 0 8px 20px rgba(23, 24, 21, .18); }
+.picker, .checkout__main, .order-summary, .finder__result, .service-card, .contact-form, .track-card, .payment-result { border-radius: 16px; }
+.picker { box-shadow: 0 14px 38px rgba(23, 24, 21, .14); }
+.finder__result { box-shadow: 0 12px 0 var(--coral); }
+.picker__presets button.active, .service-options button.active, .quantity-presets button[aria-pressed="true"], .package-options > button.active { box-shadow: 0 4px 12px rgba(23, 24, 21, .14); }
+.finder__choices button, .picker__presets button, .service-options button, .quantity-presets button, .payment-methods__option { transition: transform .18s, box-shadow .18s, border-color .18s, background-color .18s; }
+.picker__presets button:hover, .service-options button:not(:disabled):hover, .quantity-presets button:hover { transform: translateY(-2px); border-color: var(--ink); }
+.payment-methods__option:hover { border-color: var(--mint); }
+input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea { border-radius: 10px; }
+.form-message { border-radius: 9px; }
+
 @media (max-width: 560px) {
   .payment-result, .admin-auth, .admin-order { padding: 22px; }
   .admin-order { grid-template-columns: 1fr; }

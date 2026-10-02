@@ -10,22 +10,28 @@ import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
 
 type ProfileCheck = { status: "verified" | "not_found" | "private" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
-export function OrderForm({ initialService, initialQuantity }: { initialService?: string; initialQuantity?: number }) {
+export function OrderForm({ initialService, initialOffer, initialQuantity }: { initialService?: string; initialOffer?: string; initialQuantity?: number }) {
   const fallback = services[0];
   const initial = services.find((item) => item.slug === initialService) || fallback;
+  const hasSelectedPackage = Boolean(services.find((item) => item.slug === initialService));
+  const firstOffer = getServiceOffer(initial, initialOffer);
+  const firstOfferMin = getCheckoutMinimumQuantity(initial, firstOffer);
+  const firstOfferMax = firstOffer.max ?? initial.max;
+  const firstOfferStep = firstOffer.step ?? initial.step;
   const [serviceSlug, setServiceSlug] = useState(initial.slug);
   const service = services.find((item) => item.slug === serviceSlug) || fallback;
   const offers = getServiceOffers(service);
-  const [offerId, setOfferId] = useState(offers[0].id);
+  const [offerId, setOfferId] = useState(firstOffer.id);
   const offer = getServiceOffer(service, offerId);
   const offerMin = getCheckoutMinimumQuantity(service, offer);
   const offerMax = offer.max ?? service.max;
   const offerStep = offer.step ?? service.step;
   const [quantity, setQuantity] = useState(
-    initialQuantity && initialQuantity >= getCheckoutMinimumQuantity(initial, getServiceOffers(initial)[0]) && initialQuantity <= initial.max
+    initialQuantity && initialQuantity >= firstOfferMin && initialQuantity <= firstOfferMax && initialQuantity % firstOfferStep === 0
       ? initialQuantity
-      : Math.max(initial.baseQuantity, getCheckoutMinimumQuantity(initial, getServiceOffers(initial)[0])),
+      : Math.max(firstOfferMin, Math.min(firstOfferMax, initial.baseQuantity)),
   );
+  const [editingPackage, setEditingPackage] = useState(!hasSelectedPackage);
   const [commentsText, setCommentsText] = useState("");
   const [link, setLink] = useState("");
   const [email, setEmail] = useState("");
@@ -121,6 +127,13 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
   return (
     <form className="checkout" onSubmit={submit}>
       <div className="checkout__main">
+        {hasSelectedPackage && (
+          <div className="selected-package">
+            <div className="selected-package__top"><span className="eyebrow">Your selection</span><button type="button" onClick={() => setEditingPackage((current) => !current)} aria-expanded={editingPackage}>{editingPackage ? "Done editing" : "Change package"}</button></div>
+            <div className="selected-package__details"><strong>{service.shortTitle}</strong><span>{offer.label} · {offer.customComments ? "Your own comments" : `${quantity.toLocaleString()} ${service.metric}`}</span></div>
+          </div>
+        )}
+        {editingPackage && <div id="package-editor">
         <div className="form-section">
           <span className="step-number">01</span>
           <div><h2>What do you need?</h2><p>Pick a goal, then choose the platform.</p></div>
@@ -180,14 +193,23 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
             <input id="order-quantity" className="range" type="range" min={offerMin} max={offerMax} step={offerStep} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />
           </>
         )}
+        {hasSelectedPackage && <button className="package-edit-done" type="button" onClick={() => setEditingPackage(false)}>Continue with this package <ArrowRight aria-hidden="true" /></button>}
+        </div>}
+        {!editingPackage && offer.customComments && (
+          <label className="comments-field comments-field--selected">
+            <span>Write your comments <strong>{comments.length.toLocaleString()}</strong></span>
+            <textarea value={commentsText} onChange={(event) => setCommentsText(event.target.value)} rows={6} placeholder={"Love this perspective!\nThis was really helpful.\nGreat work on this one."} required />
+            <small>One comment per line. Minimum {offerMin}, in multiples of {offerStep}.</small>
+          </label>
+        )}
 
-        <div className="form-section form-section--spaced">
-          <span className="step-number">04</span>
-          <div><h2>Where should we deliver?</h2><p>{profileService ? "Enter your username. We will check the public profile before payment when the platform allows it." : "Paste the public post or video URL. It needs to remain public during delivery."}</p></div>
+        <div className={`form-section ${editingPackage ? "form-section--spaced" : "form-section--delivery"}`}>
+          <span className="step-number">{editingPackage ? "04" : "02"}</span>
+          <div><h2>Where should we deliver?</h2><p>{profileService ? `Enter the ${service.platform} username (with or without @), or paste its profile link.` : `Paste the link to the specific public ${service.platform === "Instagram" ? "post or Reel" : "video"}. It needs to stay public during delivery.`}</p></div>
         </div>
         <div className="field-grid">
           <div className="target-field">
-            <label><span>{profileService ? `${service.platform} username or profile URL` : "Public post or video URL"}</span><input type={profileService ? "text" : "url"} value={link} onChange={(event) => { setLink(event.target.value); setProfileCheck(null); setCheckingProfile(false); }} placeholder={profileService ? "@yourusername" : `https://${service.platform === "Instagram" ? "instagram.com/p/..." : service.platform === "TikTok" ? "tiktok.com/@user/video/..." : "youtube.com/watch?v=..."}`} autoComplete="off" required /></label>
+            <label><span>{profileService ? `${service.platform} username` : `${service.platform} ${service.platform === "Instagram" ? "post or Reel" : "video"} link`}</span><input type={profileService ? "text" : "url"} value={link} onChange={(event) => { setLink(event.target.value); setProfileCheck(null); setCheckingProfile(false); }} placeholder={profileService ? "@yourusername" : `https://${service.platform === "Instagram" ? "instagram.com/p/..." : service.platform === "TikTok" ? "tiktok.com/@user/video/..." : "youtube.com/watch?v=..."}`} autoComplete="off" required /></label>
             {profileService && link.trim() && (
               <div className={`profile-check profile-check--${checkingProfile ? "checking" : profileCheck?.status || (parsedProfile ? "checking" : "invalid")}`} role="status">
                 {checkingProfile || (!profileCheck && parsedProfile) ? "Checking this public profile…" : profileCheck?.status === "verified" ? `Profile found${profileCheck.displayName ? `: ${profileCheck.displayName}` : ""}` : profileCheck?.status === "private" ? "This profile is private. Make it public before ordering." : profileCheck?.status === "not_found" ? "Profile not found. Check the username." : !parsedProfile ? "Enter a valid username or profile URL." : "We could not verify automatically. Confirm the profile before paying."}

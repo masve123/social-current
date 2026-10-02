@@ -155,8 +155,3 @@ export function getServiceOffer(service: Service, offerId?: string) {
 export function calculateOfferPrice(service: Service, quantity: number, offer: SmmOffer) {
   return calculatePrice(service, quantity) * offer.priceMultiplier;
 }
-
-export function getRouteEnvName(serviceSlug: string, offerId: string) {
-  const normalize = (value: string) => value.replace(/[^a-z0-9]+/gi, "_").toUpperCase();
-  return `SMM_ROUTE_${normalize(serviceSlug)}_${normalize(offerId)}`;
-}

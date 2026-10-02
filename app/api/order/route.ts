@@ -15,7 +15,6 @@ function allowedHosts(platform: string) {
 }
 
 function fulfillmentAuthorized(request: NextRequest) {
-  if (process.env.SMM_ALLOW_UNPAID_ORDERS === "true") return true;
   const expected = process.env.SMM_FULFILLMENT_SECRET;
   const supplied = request.headers.get("x-social-current-fulfillment");
   if (!expected || !supplied) return false;

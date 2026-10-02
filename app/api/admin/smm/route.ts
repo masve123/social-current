@@ -8,7 +8,7 @@ import { getConfiguredRoutes, getPanelBalance, getPanelServices, type ProviderId
 export const runtime = "nodejs";
 
 function authorized(request: NextRequest) {
-  const expected = process.env.SMM_ADMIN_TOKEN;
+  const expected = process.env.SMM_FULFILLMENT_SECRET;
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!expected || !supplied) return false;
   const a = Buffer.from(expected);

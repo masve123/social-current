@@ -14,20 +14,18 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Connect the SMM providers
+## Connect SMM World
 
-The server adapter in `lib/smm.ts` supports Followiz, SMM World, and SMM PWR through their form-encoded API v2 interfaces. It includes service discovery, balance checks, order creation, status, refill, cancellation, custom comments, drip-feed fields, signed customer order numbers, and controlled provider fallbacks.
+The server adapter includes service discovery, balance checks, order creation, status, refill, cancellation, custom comments, signed customer order numbers, and payment-gated fulfillment.
 
-1. Copy `.env.example` to `.env.local` and add each provider API key.
-2. Generate strong values for `ORDER_TOKEN_SECRET`, `SMM_ADMIN_TOKEN`, and `SMM_FULFILLMENT_SECRET`.
-3. Inspect a provider catalog with `GET /api/admin/smm?provider=followiz&action=services&q=instagram%20followers` and an `Authorization: Bearer SMM_ADMIN_TOKEN` header. Omit `q` for the full catalog and use `action=balance` to check account balance.
-4. Map each storefront package to a provider service ID using the `SMM_ROUTE_*` variables. The format is `provider:serviceId`; an optional comma-separated second route is used only after an explicit provider rejection.
+1. Copy `.env.example` to `.env.local` and add the SMM World API key.
+2. Generate strong values for `ORDER_TOKEN_SECRET` and `SMM_FULFILLMENT_SECRET`.
+3. Inspect the catalog with `GET /api/admin/smm?provider=smmworld&action=services&q=instagram%20followers` and an `Authorization: Bearer SMM_FULFILLMENT_SECRET` header. Use `action=balance` to check the account balance.
+4. Storefront service IDs are versioned in `lib/smm-routes.ts` because they are configuration rather than secrets.
 5. Keep `SMM_LIVE_ORDERING=false` while testing the checkout. Preview orders never spend provider balance.
 6. Have the payment webhook call `POST /api/order` with `x-social-current-fulfillment: SMM_FULFILLMENT_SECRET`. Set `SMM_LIVE_ORDERING=true` only after that payment flow is in place.
 
 After mapping services, request `action=routes` from the admin endpoint to see the current provider service name, wholesale cost at the storefront base quantity, retail price, gross margin, and refill/cancel support for every mapped package.
-
-Setting `SMM_ALLOW_UNPAID_ORDERS=true` lets the public checkout submit live provider orders and should only be used for controlled testing.
 
 ## SEO setup
 

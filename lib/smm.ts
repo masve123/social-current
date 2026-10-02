@@ -1,5 +1,6 @@
 import { getService } from "@/lib/services";
-import { getRouteEnvName, getServiceOffer } from "@/lib/smm-offers";
+import { getServiceOffer } from "@/lib/smm-offers";
+import { getSmmRoutes, type SmmRoute } from "@/lib/smm-routes";
 
 export type ProviderId = "followiz" | "smmworld" | "smmpwr";
 
@@ -27,7 +28,6 @@ export type PanelOrderStatus = {
 };
 
 type ProviderConfig = { id: ProviderId; endpoint: string; key: string };
-type Route = { provider: ProviderId; serviceId: string };
 
 const defaults: Record<ProviderId, string> = {
   followiz: "https://followiz.com/api/v2",
@@ -84,27 +84,11 @@ async function panelRequest<T>(provider: ProviderId, payload: PanelRecord): Prom
   return data;
 }
 
-function parseRoute(value: string): Route | undefined {
-  const [provider, serviceId] = value.trim().split(":", 2);
-  if (!serviceId || !["followiz", "smmworld", "smmpwr"].includes(provider)) return undefined;
-  return { provider: provider as ProviderId, serviceId };
-}
-
-export function getConfiguredRoutes(serviceSlug: string, offerId: string): Route[] {
+export function getConfiguredRoutes(serviceSlug: string, offerId: string): SmmRoute[] {
   const service = getService(serviceSlug);
   if (!service) throw new Error("Unknown service.");
-
-  const routeValue = process.env[getRouteEnvName(serviceSlug, offerId)];
-  const routes = routeValue?.split(",").map(parseRoute).filter((route): route is Route => Boolean(route)) || [];
+  const routes = getSmmRoutes(serviceSlug, offerId);
   if (routes.length) return routes;
-
-  if (offerId === "standard" || offerId === "standard-comments") {
-    const legacyServiceId = process.env[service.serviceEnv];
-    if (legacyServiceId && process.env.SMM_PANEL_API_URL && process.env.SMM_PANEL_API_KEY) {
-      return [{ provider: "smmworld", serviceId: legacyServiceId }];
-    }
-  }
-
   throw new Error(`No provider route is configured for ${service.shortTitle} / ${offerId}.`);
 }
 

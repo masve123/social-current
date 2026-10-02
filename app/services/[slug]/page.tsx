@@ -10,6 +10,7 @@ import { getArticlesByCategory } from "@/lib/articles";
 import { getPlatform } from "@/lib/platforms";
 import { serviceContent } from "@/lib/service-content";
 import { calculatePrice, getService, services } from "@/lib/services";
+import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
 import { site } from "@/lib/site";
 
 export function generateStaticParams() {
@@ -36,6 +37,8 @@ export default async function ServicePage({ params }: { params: Promise<{ slug: 
   const platform = getPlatform(service.platform.toLowerCase());
   const guides = getArticlesByCategory(service.platform).slice(0, 3);
   const content = serviceContent[service.slug];
+  const checkoutMin = getStandardCheckoutMinimumQuantity(service);
+  const startingQuantity = Math.max(service.baseQuantity, checkoutMin);
 
   const productSchema = {
     "@context": "https://schema.org",
@@ -49,9 +52,9 @@ export default async function ServicePage({ params }: { params: Promise<{ slug: 
     offers: {
       "@type": "AggregateOffer",
       priceCurrency: "USD",
-      lowPrice: calculatePrice(service, service.min).toFixed(2),
+      lowPrice: calculatePrice(service, checkoutMin).toFixed(2),
       highPrice: calculatePrice(service, service.max).toFixed(2),
-      offerCount: Math.floor((service.max - service.min) / service.step) + 1,
+      offerCount: Math.floor((service.max - checkoutMin) / service.step) + 1,
       availability: "https://schema.org/InStock",
       url: `${site.url}/services/${service.slug}`,
     },
@@ -103,7 +106,7 @@ export default async function ServicePage({ params }: { params: Promise<{ slug: 
 
       {guides.length > 0 && <section className="section shell"><div className="section-heading"><div><span className="eyebrow">Plan the campaign</span><h2>Useful {service.platform} growth <em>guides.</em></h2></div><Link className="text-link text-link--arrow" href="/blog">All growth notes <ArrowRight /></Link></div><div className="resource-list">{guides.map((article) => <Link href={`/blog/${article.slug}`} key={article.slug}><span>{article.category} · {article.readTime}</span><strong>{article.title}</strong><ArrowRight /></Link>)}</div></section>}
 
-      <section className="mini-cta"><div className="shell"><div><span>Ready to move?</span><h2>Start with {service.baseQuantity.toLocaleString()} {service.metric}.</h2></div><Link className="button button--cream" href={`/order?service=${service.slug}&quantity=${service.baseQuantity}`}>Continue — ${service.basePrice.toFixed(2)} <ArrowRight /></Link></div></section>
+      <section className="mini-cta"><div className="shell"><div><span>Ready to move?</span><h2>Start with {startingQuantity.toLocaleString()} {service.metric}.</h2></div><Link className="button button--cream" href={`/order?service=${service.slug}&quantity=${startingQuantity}`}>Continue — ${calculatePrice(service, startingQuantity).toFixed(2)} <ArrowRight /></Link></div></section>
       <JsonLd data={[productSchema, faqSchema]} />
     </>
   );

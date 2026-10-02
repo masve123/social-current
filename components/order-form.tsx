@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2, LoaderCircle, LockKeyhole } from "lucide-reac
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
+import { getCheckoutMinimumQuantity, minimumCheckoutUsd } from "@/lib/checkout-pricing";
 import { services } from "@/lib/services";
 
 export function OrderForm({ initialService, initialQuantity }: { initialService?: string; initialQuantity?: number }) {
@@ -14,11 +15,13 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
   const offers = getServiceOffers(service);
   const [offerId, setOfferId] = useState(offers[0].id);
   const offer = getServiceOffer(service, offerId);
-  const offerMin = offer.min ?? service.min;
+  const offerMin = getCheckoutMinimumQuantity(service, offer);
   const offerMax = offer.max ?? service.max;
   const offerStep = offer.step ?? service.step;
   const [quantity, setQuantity] = useState(
-    initialQuantity && initialQuantity >= initial.min && initialQuantity <= initial.max ? initialQuantity : initial.baseQuantity,
+    initialQuantity && initialQuantity >= getCheckoutMinimumQuantity(initial, getServiceOffers(initial)[0]) && initialQuantity <= initial.max
+      ? initialQuantity
+      : Math.max(initial.baseQuantity, getCheckoutMinimumQuantity(initial, getServiceOffers(initial)[0])),
   );
   const [commentsText, setCommentsText] = useState("");
   const [link, setLink] = useState("");
@@ -33,14 +36,14 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
     const next = services.find((item) => item.slug === slug) || fallback;
     setServiceSlug(slug);
     setOfferId(getServiceOffers(next)[0].id);
-    setQuantity(next.baseQuantity);
+    setQuantity(Math.max(next.baseQuantity, getCheckoutMinimumQuantity(next, getServiceOffers(next)[0])));
     setCommentsText("");
     setState("idle");
   }
 
   function changeOffer(id: string) {
     const next = getServiceOffer(service, id);
-    const min = next.min ?? service.min;
+    const min = getCheckoutMinimumQuantity(service, next);
     const max = next.max ?? service.max;
     setOfferId(next.id);
     setQuantity((current) => Math.min(max, Math.max(min, current)));
@@ -49,6 +52,11 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (price < minimumCheckoutUsd || (offer.customComments && comments.length < offerMin)) {
+      setState("error");
+      setMessage(`This checkout needs at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity${offer.customComments ? " or add more comments" : ""} to continue.`);
+      return;
+    }
     setState("loading");
     setMessage("");
     try {
@@ -99,7 +107,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
 
         <div className="form-section form-section--spaced">
           <span className="step-number">03</span>
-          <div><h2>{offer.customComments ? "Write your comments" : "Choose the amount"}</h2><p>{offer.customComments ? `Add one comment per line, in multiples of ${offerStep}.` : "Use the slider for a package that fits your campaign."}</p></div>
+          <div><h2>{offer.customComments ? "Write your comments" : "Choose the amount"}</h2><p>{offer.customComments ? `Add at least ${offerMin} comments, one per line, in multiples of ${offerStep}.` : "Use the slider for a package that fits your campaign."}</p></div>
         </div>
         {offer.customComments ? (
           <label className="comments-field">
@@ -130,6 +138,7 @@ export function OrderForm({ initialService, initialQuantity }: { initialService?
         <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString()}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
         <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+        <p className="checkout-note">Minimum crypto checkout: ${minimumCheckoutUsd.toFixed(2)}. Available currencies and network minimums are shown by the payment provider.</p>
         <label className="checkout-consent">
           <input type="checkbox" required />
           <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>

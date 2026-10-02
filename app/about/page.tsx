@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Eye, HeartHandshake, SlidersHorizontal } from "lucide-react";
+import { pageSocialMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "About Social Current", description: "Why Social Current built a clearer, more thoughtful social media growth storefront.", alternates: { canonical: "/about" } };
+export const metadata: Metadata = { title: "About Social Current", description: "Why Social Current built a clearer, more thoughtful social media growth storefront.", alternates: { canonical: "/about" }, ...pageSocialMetadata("About Social Current", "Why Social Current built a clearer, more thoughtful social media growth storefront.", "/about") };
 
 export default function AboutPage() {
   return (

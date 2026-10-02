@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { pageSocialMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Editorial Policy and Commercial Disclosure",
   description: "How Social Current researches, writes, reviews, updates, and commercially discloses its social media growth guides.",
   alternates: { canonical: "/editorial-policy" },
+  ...pageSocialMetadata("Editorial Policy and Commercial Disclosure", "How Social Current researches, writes, reviews, updates, and commercially discloses its social media growth guides.", "/editorial-policy"),
 };
 
 export default function EditorialPolicyPage() {

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowUpRight, Check } from "lucide-react";
 import type { Service } from "@/lib/services";
+import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
+import { calculatePrice } from "@/lib/services";
 
 export function ServiceCard({ service, featured = false }: { service: Service; featured?: boolean }) {
   return (
@@ -13,7 +15,7 @@ export function ServiceCard({ service, featured = false }: { service: Service; f
       <p>{service.description}</p>
       <div className="service-card__price">
         <span>from</span>
-        <strong>${service.basePrice.toFixed(2)}</strong>
+        <strong>${calculatePrice(service, getStandardCheckoutMinimumQuantity(service)).toFixed(2)}</strong>
       </div>
       <ul>
         {service.highlights.map((item) => <li key={item}><Check aria-hidden="true" /> {item}</li>)}

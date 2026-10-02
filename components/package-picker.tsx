@@ -4,13 +4,15 @@ import Link from "next/link";
 import { Check, Clock3, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { calculatePrice, type Service } from "@/lib/services";
+import { getStandardCheckoutMinimumQuantity, minimumCheckoutUsd } from "@/lib/checkout-pricing";
 
 export function PackagePicker({ service }: { service: Service }) {
+  const minQuantity = getStandardCheckoutMinimumQuantity(service);
   const presets = useMemo(() => {
     const values = [service.baseQuantity / 2, service.baseQuantity, service.baseQuantity * 2.5, service.baseQuantity * 5];
-    return values.map((value) => Math.max(service.min, Math.min(service.max, Math.round(value / service.step) * service.step)));
-  }, [service]);
-  const [quantity, setQuantity] = useState(service.baseQuantity);
+    return [...new Set(values.map((value) => Math.max(minQuantity, Math.min(service.max, Math.round(value / service.step) * service.step))))];
+  }, [service, minQuantity]);
+  const [quantity, setQuantity] = useState(Math.max(service.baseQuantity, minQuantity));
   const price = calculatePrice(service, quantity);
 
   return (
@@ -39,13 +41,14 @@ export function PackagePicker({ service }: { service: Service }) {
         id="quantity"
         className="range"
         type="range"
-        min={service.min}
+        min={minQuantity}
         max={service.max}
         step={service.step}
         value={quantity}
         onChange={(event) => setQuantity(Number(event.target.value))}
       />
       <div className="picker__total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+      <p className="checkout-note">Minimum crypto checkout: ${minimumCheckoutUsd.toFixed(2)}</p>
       <Link className="button button--coral button--wide" href={`/order?service=${service.slug}&quantity=${quantity}`}>
         Continue to checkout
       </Link>

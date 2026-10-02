@@ -71,7 +71,7 @@ export default function Home() {
         <div className="services-grid">
           {services.slice(0, 3).map((service, index) => <ServiceCard service={service} featured={index === 0} key={service.slug} />)}
         </div>
-        <div className="center"><Link className="text-link text-link--arrow" href="/order">See all services <ArrowRight /></Link></div>
+        <div className="center"><Link className="text-link text-link--arrow" href="/services">See all services <ArrowRight /></Link></div>
       </section>
 
       <section className="how" id="how-it-works">

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Mail, MessageSquareText } from "lucide-react";
 import { site } from "@/lib/site";
+import { pageSocialMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "Contact Support", description: "Contact Social Current for order support, service questions, and partnership enquiries.", alternates: { canonical: "/contact" } };
+export const metadata: Metadata = { title: "Contact Support", description: "Contact Social Current for order support, service questions, and partnership enquiries.", alternates: { canonical: "/contact" }, ...pageSocialMetadata("Contact Support", "Contact Social Current for order support, service questions, and partnership enquiries.", "/contact") };
 
 export default function ContactPage() {
   return (

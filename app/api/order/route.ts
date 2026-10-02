@@ -12,6 +12,7 @@ import {
   updateProviderStatus,
 } from "@/lib/order-store";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
+import { minimumCheckoutUsd } from "@/lib/checkout-pricing";
 import { getService } from "@/lib/services";
 import { getPanelOrderStatus } from "@/lib/smm";
 import { site } from "@/lib/site";
@@ -90,6 +91,9 @@ export async function POST(request: NextRequest) {
     }
 
     const amount = Number(calculateOfferPrice(service, quantity, offer).toFixed(2));
+    if (amount < minimumCheckoutUsd) {
+      return NextResponse.json({ error: `Crypto checkout requires an order of at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity to continue.` }, { status: 400 });
+    }
     publicId = createPublicOrderId();
     await createStoredOrder({
       publicId,

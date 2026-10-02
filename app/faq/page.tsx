@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { FaqList } from "@/components/faq-list";
 import { services } from "@/lib/services";
+import { pageSocialMetadata } from "@/lib/seo";
 
 const generalFaq = [
   { question: "What is Social Current?", answer: "Social Current is a storefront for social media growth packages across Instagram, TikTok, and YouTube. We connect orders to a specialist fulfillment provider and keep the buying experience clear." },
@@ -11,7 +12,7 @@ const generalFaq = [
   { question: "How do refills work?", answer: "If a covered order drops during its stated refill period, send support the order number. We will verify the count and submit an eligible refill." },
 ];
 
-export const metadata: Metadata = { title: "Social Media Growth FAQ", description: "Answers about Social Current delivery, privacy, refills, order tracking, and social media growth packages.", alternates: { canonical: "/faq" } };
+export const metadata: Metadata = { title: "Social Media Growth FAQ", description: "Answers about Social Current delivery, privacy, refills, order tracking, and social media growth packages.", alternates: { canonical: "/faq" }, ...pageSocialMetadata("Social Media Growth FAQ", "Answers about Social Current delivery, privacy, refills, order tracking, and social media growth packages.", "/faq") };
 
 export default function FaqPage() {
   const allFaq = [...generalFaq, ...services.flatMap((service) => service.faq)];

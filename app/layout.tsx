@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   twitter: { card: "summary_large_image", title: "Social Current", description: site.description, images: ["/opengraph-image"] },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 } },
-  verification: { google: process.env.GOOGLE_SITE_VERIFICATION },
+  verification: { google: "Y4qYW-laEdr-xQgqpBAazFrTRNkeyFlyE0FoG5eEGEk" },
   category: "marketing",
 };
 

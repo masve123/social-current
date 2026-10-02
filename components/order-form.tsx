@@ -10,7 +10,7 @@ import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
 
 type ProfileCheck = { status: "verified" | "not_found" | "private" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
-export function OrderForm({ initialService, initialOffer, initialQuantity }: { initialService?: string; initialOffer?: string; initialQuantity?: number }) {
+export function OrderForm({ initialService, initialOffer, initialQuantity, instagramLookupEnabled = false }: { initialService?: string; initialOffer?: string; initialQuantity?: number; instagramLookupEnabled?: boolean }) {
   const fallback = services[0];
   const initial = services.find((item) => item.slug === initialService) || fallback;
   const hasSelectedPackage = Boolean(services.find((item) => item.slug === initialService));
@@ -44,13 +44,14 @@ export function OrderForm({ initialService, initialOffer, initialQuantity }: { i
   const pricedQuantity = offer.customComments ? Math.max(offerMin, comments.length) : quantity;
   const price = calculateOfferPrice(service, pricedQuantity, offer);
   const profileService = isProfileService(service);
+  const checkProfileAutomatically = profileService && (service.platform !== "Instagram" || instagramLookupEnabled);
   const activeGoal = service.metric === "subscribers" ? "followers" : service.metric;
   const parsedProfile = profileService ? parseProfileTarget(service.platform, link) : null;
   const quantityPresets = [...new Set([offerMin, service.baseQuantity, service.baseQuantity * 2, service.baseQuantity * 5]
     .map((value) => Math.min(offerMax, Math.max(offerMin, Math.round(value / offerStep) * offerStep))))];
 
   useEffect(() => {
-    if (!profileService || !link.trim() || !parsedProfile) return;
+    if (!checkProfileAutomatically || !link.trim() || !parsedProfile) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setCheckingProfile(true);
@@ -70,7 +71,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity }: { i
       }
     }, 600);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [link, parsedProfile?.url, profileService, service.platform]);
+  }, [link, parsedProfile?.url, checkProfileAutomatically, service.platform]);
 
   function changeService(slug: string) {
     const next = services.find((item) => item.slug === slug) || fallback;
@@ -131,6 +132,15 @@ export function OrderForm({ initialService, initialOffer, initialQuantity }: { i
           <div className="selected-package">
             <div className="selected-package__top"><span className="eyebrow">Your selection</span><button type="button" onClick={() => setEditingPackage((current) => !current)} aria-expanded={editingPackage}>{editingPackage ? "Done editing" : "Change package"}</button></div>
             <div className="selected-package__details"><strong>{service.shortTitle}</strong><span>{offer.label} · {offer.customComments ? "Your own comments" : `${quantity.toLocaleString()} ${service.metric}`}</span></div>
+          </div>
+        )}
+        {hasSelectedPackage && !editingPackage && service.metric === "followers" && offers.length > 1 && (
+          <div className="checkout-type-choice">
+            <label htmlFor="checkout-follower-type">Follower type</label>
+            <select id="checkout-follower-type" value={offer.id} onChange={(event) => changeOffer(event.target.value)}>
+              {offers.map((item) => <option value={item.id} key={item.id}>{item.label} · {item.audience}</option>)}
+            </select>
+            <small>{offer.description} {offer.protection}.</small>
           </div>
         )}
         {editingPackage && <div id="package-editor">
@@ -211,9 +221,9 @@ export function OrderForm({ initialService, initialOffer, initialQuantity }: { i
           <div className="target-field">
             <label><span>{profileService ? `${service.platform} username` : `${service.platform} ${service.platform === "Instagram" ? "post or Reel" : "video"} link`}</span><input type={profileService ? "text" : "url"} value={link} onChange={(event) => { setLink(event.target.value); setProfileCheck(null); setCheckingProfile(false); }} placeholder={profileService ? "@yourusername" : `https://${service.platform === "Instagram" ? "instagram.com/p/..." : service.platform === "TikTok" ? "tiktok.com/@user/video/..." : "youtube.com/watch?v=..."}`} autoComplete="off" required /></label>
             {profileService && link.trim() && (
-              <div className={`profile-check profile-check--${checkingProfile ? "checking" : profileCheck?.status || (parsedProfile ? "checking" : "invalid")}`} role="status">
-                {checkingProfile || (!profileCheck && parsedProfile) ? "Checking this public profile…" : profileCheck?.status === "verified" ? `Profile found${profileCheck.displayName ? `: ${profileCheck.displayName}` : ""}` : profileCheck?.status === "private" ? "This profile is private. Make it public before ordering." : profileCheck?.status === "not_found" ? "Profile not found. Check the username." : !parsedProfile ? "Enter a valid username or profile URL." : "We could not verify automatically. Confirm the profile before paying."}
-                {parsedProfile && profileCheck?.status !== "not_found" && <a href={parsedProfile.url} target="_blank" rel="noopener noreferrer">View profile <ExternalLink aria-hidden="true" /></a>}
+              <div className={`profile-check profile-check--${checkingProfile ? "checking" : profileCheck?.status || (parsedProfile ? checkProfileAutomatically ? "checking" : "unavailable" : "invalid")}`} role="status">
+                {checkingProfile || (checkProfileAutomatically && !profileCheck && parsedProfile) ? "Checking profile…" : profileCheck?.status === "verified" ? `Profile found${profileCheck.displayName ? `: ${profileCheck.displayName}` : ""}` : profileCheck?.status === "private" ? "This profile is private. Make it public before ordering." : profileCheck?.status === "not_found" ? "Profile not found. Check the username." : !parsedProfile ? "Enter a valid username or profile URL." : `Delivery target: @${parsedProfile.handle}`}
+                {parsedProfile && profileCheck?.status !== "not_found" && <a href={parsedProfile.url} target="_blank" rel="noopener noreferrer">Preview profile <ExternalLink aria-hidden="true" /></a>}
               </div>
             )}
           </div>

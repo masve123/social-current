@@ -19,7 +19,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         <span className="eyebrow">{selectedService ? "Secure checkout" : "Build your package"}</span>
         <h1>{selectedService ? <>One step closer to <em>growing.</em></> : <>Find your next <em>growth package.</em></>}</h1>
         <p>{selectedService ? "Your selection is ready. Add the public profile or post, then choose how to pay. No password needed." : "Choose what you want to grow, add the public profile or post, and pay securely. No password needed."}</p>
-        <OrderForm initialService={query.service} initialOffer={query.offer} initialQuantity={Number.isFinite(quantity) ? quantity : undefined} />
+        <OrderForm initialService={query.service} initialOffer={query.offer} initialQuantity={Number.isFinite(quantity) ? quantity : undefined} instagramLookupEnabled={Boolean(process.env.HIKER_API_KEY)} />
       </div>
     </section>
   );

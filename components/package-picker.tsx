@@ -26,9 +26,28 @@ export function PackagePicker({ service }: { service: Service }) {
   return (
     <aside className="picker" aria-label={`${service.shortTitle} package picker`}>
       <div className="picker__header">
-        <span>Choose your amount</span>
+        <span>{service.metric === "followers" ? "Build your follower package" : "Choose your amount"}</span>
       </div>
-      {offers.length > 1 && (
+      {service.metric === "followers" && offers.length > 1 && (
+        <fieldset className="picker__follower-types">
+          <legend>Choose your follower type</legend>
+          <div className="picker__follower-grid">
+            {offers.map((item) => {
+              const itemQuantity = Math.max(getCheckoutMinimumQuantity(service, item), Math.min(item.max ?? service.max, selectedQuantity));
+              return (
+                <button type="button" key={item.id} className={offer.id === item.id ? "active" : ""} aria-pressed={offer.id === item.id} onClick={() => setOfferId(item.id)}>
+                  <strong>{item.label}</strong>
+                  <small>{item.audience} · {item.protection}</small>
+                  <small>For {itemQuantity.toLocaleString()} followers</small>
+                  <span>${calculateOfferPrice(service, itemQuantity, item).toFixed(2)}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p>{offer.description}</p>
+        </fieldset>
+      )}
+      {service.metric !== "followers" && offers.length > 1 && (
         <div className="picker__tier">
           <label htmlFor="package-tier">Delivery package</label>
           <select id="package-tier" value={offer.id} onChange={(event) => setOfferId(event.target.value)}>

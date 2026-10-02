@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Check, Gauge, LockKeyhole, MessageCircleMore, Sparkles } from "lucide-react";
 import { FaqList } from "@/components/faq-list";
-import { GrowthFinder } from "@/components/growth-finder";
+import { HeroPicker } from "@/components/hero-picker";
 import { JsonLd } from "@/components/json-ld";
 import { ServiceCard } from "@/components/service-card";
 import { articles } from "@/lib/articles";
@@ -9,8 +9,8 @@ import { services } from "@/lib/services";
 import { site } from "@/lib/site";
 
 const homeFaq = [
-  { question: "How does Social Current work?", answer: "Choose a service and package, paste the public profile or post URL, and place your order. Our delivery partner begins processing it automatically, and you can follow progress with your order number." },
-  { question: "Will you ever ask for my password?", answer: "Never. Social Current only needs a public profile or post link. Keep your passwords and login codes private." },
+  { question: "How does Social Current work?", answer: "Choose a service and package, enter your public username or post URL, and place your order. You can follow progress with your order number." },
+  { question: "Will you ever ask for my password?", answer: "Never. Social Current only needs your public username or post link. Keep your passwords and login codes private." },
   { question: "When will my order begin?", answer: "Start times vary by service, but most Instagram and TikTok orders begin within 5–45 minutes. You will see the estimated start time before checkout." },
   { question: "Can growth services guarantee sales or reach?", answer: "No service can guarantee a platform outcome. Social Current helps with visible social proof while your content, audience fit, and publishing strategy drive long-term results." },
 ];
@@ -27,41 +27,21 @@ export default function Home() {
 
   return (
     <>
-      <section className="hero">
+      <section className="hero hero--guided">
         <div className="hero__noise" />
-        <div className="shell hero__grid">
-          <div className="hero__copy">
-            <div className="pill"><span /> Clear pricing. Human support. No passwords.</div>
-            <h1>Make your social presence <em>hard to ignore.</em></h1>
-            <p>Flexible growth packages for creators and brands who want stronger social proof without the confusing dashboards.</p>
-            <div className="hero__actions">
-              <Link className="button button--coral" href="#growth-finder">Find my package <ArrowRight /></Link>
-              <Link className="text-link text-link--arrow" href="#how-it-works">See how it works <span>↓</span></Link>
-            </div>
-            <div className="hero__proof">
-              <div className="proof-checks" aria-hidden="true"><span>✓</span><span>✓</span><span>✓</span></div>
-              <div><strong>Simple from the start</strong><span>clear timing, private checkout, live tracking</span></div>
-            </div>
+        <div className="shell hero--guided__inner">
+          <div className="hero--guided__intro">
+            <span className="eyebrow">Social Current · Simple social growth</span>
+            <h1>Find the right boost for your <em>next move.</em></h1>
+            <p>Followers, likes, views and comments for Instagram, TikTok and YouTube. Pick your platform and see the options right away.</p>
           </div>
-          <div className="hero-art" aria-label="Illustration of growing social media metrics">
-            <div className="hero-art__orbit hero-art__orbit--one" />
-            <div className="hero-art__orbit hero-art__orbit--two" />
-            <div className="phone-card">
-              <div className="phone-card__top"><span className="mini-avatar">M</span><span><strong>mira.creates</strong><small>Studio diary</small></span><span>•••</span></div>
-              <div className="phone-card__photo"><span>MAKE<br />MORE<br /><em>NOISE</em></span></div>
-              <div className="phone-card__meta"><span>♡ 24.8K</span><span>◯ 918</span><span>↗</span></div>
-            </div>
-            <div className="metric-chip metric-chip--followers"><span>New followers</span><strong>+2,540</strong><small>↗ 18.4% this week</small></div>
-            <div className="metric-chip metric-chip--views"><Sparkles /><span><strong>1.2M</strong> views</span></div>
-            <div className="scribble" aria-hidden="true">↗</div>
-          </div>
+          <HeroPicker />
+          <Link className="hero--guided__learn" href="#how-it-works">How it works <span aria-hidden="true">↓</span></Link>
         </div>
         <div className="platform-strip">
           <span>Growth for</span><strong>Instagram</strong><i>✦</i><strong>TikTok</strong><i>✦</i><strong>YouTube</strong><i>✦</i><strong>Creators</strong>
         </div>
       </section>
-
-      <GrowthFinder />
 
       <section className="section shell" aria-labelledby="services-heading">
         <div className="section-heading">

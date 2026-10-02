@@ -363,6 +363,65 @@ input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 0; 
 .checkout-type-choice small { color: var(--muted); font-size: 11px; line-height: 1.4; }
 .profile-check--unavailable { color: var(--muted); }
 
+/* The homepage starts with a usable service picker. */
+.hero--guided { min-height: 0; background: #f9f7f1; }
+.hero--guided__inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; padding: 55px 0 42px; }
+.hero--guided__intro { max-width: 850px; text-align: center; }
+.hero--guided__intro .eyebrow { margin-bottom: 0; color: #715e51; }
+.hero--guided h1 { max-width: 800px; margin: 14px auto 15px; font-size: clamp(48px, 5.3vw, 72px); line-height: .96; }
+.hero--guided__intro > p { max-width: 620px; margin: 0 auto; color: #5c5d56; font-size: 16px; line-height: 1.5; }
+.hero--guided__learn { display: inline-flex; align-items: center; gap: 9px; margin-top: 18px; font-size: 12px; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; }
+.hero--guided__learn span { font-size: 17px; text-decoration: none; }
+.hero-picker { width: min(920px, 100%); margin: 30px auto 0; padding: 9px; border: 1px solid #dedbd2; border-radius: 20px; background: white; box-shadow: 0 16px 45px rgba(23, 24, 21, .1); }
+.hero-picker__heading { display: flex; justify-content: space-between; gap: 15px; padding: 12px 17px 14px; font-size: 11px; font-weight: 800; }
+.hero-picker__heading span:last-child { color: var(--muted); font-weight: 600; }
+.hero-picker__platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 13px; background: #eeeae3; }
+.hero-picker__platforms button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #65665f; font-size: 13px; font-weight: 800; cursor: pointer; transition: background-color .18s, color .18s, box-shadow .18s, transform .18s; }
+.hero-picker__platforms button:hover { color: var(--ink); transform: translateY(-1px); }
+.hero-picker__platforms button.active { border-color: #e6e0d6; background: white; color: var(--ink); box-shadow: 0 2px 8px rgba(23, 24, 21, .1); }
+.hero-picker__platform-icon { display: inline-grid; width: 27px; height: 27px; place-items: center; border-radius: 8px; background: #eee9df; color: var(--ink); }
+.hero-picker__platform-icon--instagram { background: #ffe2df; color: #cf4a41; }
+.hero-picker__platform-icon--tiktok { background: #dfebea; color: #147d76; }
+.hero-picker__platform-icon--youtube { background: #ffe5dc; color: #d34432; }
+.hero-picker__platform-icon svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.hero-picker__goals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; padding: 11px 2px 6px; }
+.hero-picker__goal { min-width: 0; min-height: 164px; display: flex; flex-direction: column; align-items: flex-start; padding: 15px; border: 1px solid #e3ded4; border-radius: 12px; background: #fffcf7; transition: transform .2s, border-color .2s, box-shadow .2s, background-color .2s; }
+.hero-picker__goal:hover, .hero-picker__goal:focus-visible { transform: translateY(-3px); border-color: var(--coral); background: white; box-shadow: 0 8px 22px rgba(23, 24, 21, .1); }
+.hero-picker__goal-icon { display: grid; width: 31px; height: 31px; place-items: center; margin-bottom: 12px; border-radius: 9px; background: #ffe2db; color: #b73d32; }
+.hero-picker__goal:nth-child(2) .hero-picker__goal-icon { background: #fce2e9; color: #ab3c5b; }
+.hero-picker__goal:nth-child(3) .hero-picker__goal-icon { background: #e3f1e8; color: #32694d; }
+.hero-picker__goal:nth-child(4) .hero-picker__goal-icon { background: #faedc5; color: #79600e; }
+.hero-picker__goal-icon svg { width: 17px; height: 17px; stroke-width: 2.2; }
+.hero-picker__goal strong { font-size: 15px; line-height: 1.15; }
+.hero-picker__goal > small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.hero-picker__goal-bottom { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 16px; font-size: 10px; font-weight: 800; }
+.hero-picker__goal-bottom svg { width: 18px; height: 18px; transition: transform .2s; }
+.hero-picker__goal:hover .hero-picker__goal-bottom svg { transform: translate(2px, -2px); }
+.hero-picker__foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px 20px; padding: 7px 12px 4px; color: #707168; font-size: 10px; }
+.hero-picker__foot span + span::before { content: "·"; margin-right: 20px; }
+
+@media (max-width: 740px) {
+  .hero--guided__inner { padding: 44px 0 35px; }
+  .hero.hero--guided h1 { font-size: clamp(45px, 9vw, 60px); }
+  .hero-picker__goals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-picker__goal { min-height: 150px; }
+}
+
+@media (max-width: 430px) {
+  .hero--guided__inner { padding-top: 35px; }
+  .hero.hero--guided h1 { font-size: 44px; }
+  .hero--guided__intro > p { font-size: 14px; }
+  .hero-picker { margin-top: 25px; padding: 7px; }
+  .hero-picker__heading { padding: 9px 8px 11px; }
+  .hero-picker__heading span:last-child { display: none; }
+  .hero-picker__platforms button { gap: 4px; flex-direction: column; min-height: 57px; font-size: 11px; }
+  .hero-picker__platform-icon { width: 23px; height: 23px; }
+  .hero-picker__goal { min-height: 140px; padding: 12px; }
+  .hero-picker__goal-icon { margin-bottom: 7px; }
+  .hero-picker__foot { gap: 3px 12px; }
+  .hero-picker__foot span + span::before { margin-right: 12px; }
+}
+
 /* Softer shapes and tactile states across the buying journey. */
 .button, .finder__choices button, .service-options button, .quantity-presets button, .picker__presets button, .package-options > button, .payment-methods__option, .package-edit-done { border-radius: 10px; }
 .button:hover { box-shadow: 0 8px 20px rgba(23, 24, 21, .18); }

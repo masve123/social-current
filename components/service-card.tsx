@@ -3,6 +3,7 @@ import { ArrowUpRight, Check } from "lucide-react";
 import type { Service } from "@/lib/services";
 import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
 import { calculatePrice } from "@/lib/services";
+import { servicePath } from "@/lib/service-path";
 
 export function ServiceCard({ service, featured = false }: { service: Service; featured?: boolean }) {
   return (
@@ -20,7 +21,7 @@ export function ServiceCard({ service, featured = false }: { service: Service; f
       <ul>
         {service.highlights.map((item) => <li key={item}><Check aria-hidden="true" /> {item}</li>)}
       </ul>
-      <Link className="card-link" href={`/services/${service.slug}`} aria-label={`View ${service.shortTitle} packages`}>
+      <Link className="card-link" href={servicePath(service)} aria-label={`View ${service.shortTitle} packages`}>
         View packages <ArrowUpRight aria-hidden="true" />
       </Link>
     </article>

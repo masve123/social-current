@@ -7,6 +7,7 @@ import { ServiceCard } from "@/components/service-card";
 import { articles } from "@/lib/articles";
 import { services } from "@/lib/services";
 import { site } from "@/lib/site";
+import { servicePath } from "@/lib/service-path";
 
 const homeFaq = [
   { question: "How does Social Current work?", answer: "Choose a service and package, enter your public username or post URL, and place your order. You can follow progress with your order number." },
@@ -22,7 +23,7 @@ export default function Home() {
     name: site.name,
     url: site.url,
   };
-  const serviceList = { "@context": "https://schema.org", "@type": "ItemList", name: "Social media growth services", itemListElement: services.map((service, index) => ({ "@type": "ListItem", position: index + 1, name: service.title, url: `${site.url}/services/${service.slug}` })) };
+  const serviceList = { "@context": "https://schema.org", "@type": "ItemList", name: "Social media growth services", itemListElement: services.map((service, index) => ({ "@type": "ListItem", position: index + 1, name: service.title, url: `${site.url}${servicePath(service)}` })) };
   const faqSchema = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: homeFaq.map((item) => ({ "@type": "Question", name: item.question, acceptedAnswer: { "@type": "Answer", text: item.answer } })) };
 
   return (

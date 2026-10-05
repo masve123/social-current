@@ -7,6 +7,7 @@ import { ServiceCard } from "@/components/service-card";
 import { platforms } from "@/lib/platforms";
 import { services } from "@/lib/services";
 import { site } from "@/lib/site";
+import { servicePath } from "@/lib/service-path";
 
 export const metadata: Metadata = {
   title: "Social Media Growth Services and Packages",
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default function ServicesPage() {
-  const itemList = { "@context": "https://schema.org", "@type": "ItemList", name: "Social Current social media growth services", itemListElement: services.map((service, index) => ({ "@type": "ListItem", position: index + 1, name: service.title, url: `${site.url}/services/${service.slug}` })) };
+  const itemList = { "@context": "https://schema.org", "@type": "ItemList", name: "Social Current social media growth services", itemListElement: services.map((service, index) => ({ "@type": "ListItem", position: index + 1, name: service.title, url: `${site.url}${servicePath(service)}` })) };
   return (
     <>
       <section className="page-hero page-hero--compact"><div className="shell"><Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Services" }]} /><span className="eyebrow">All services</span><h1>Choose the signal you want to <em>strengthen.</em></h1><p>Compare every package by platform, delivery time, quantity, and refill coverage before checkout.</p></div></section>

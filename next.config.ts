@@ -6,6 +6,15 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
   },
+  async redirects() {
+    return [
+      {
+        source: "/instagram-views",
+        destination: "/instagram-reels-views",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

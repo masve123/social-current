@@ -3,6 +3,7 @@ import { Instagram, Music2, Youtube } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { services } from "@/lib/services";
 import { site } from "@/lib/site";
+import { servicePath } from "@/lib/service-path";
 
 export function Footer() {
   return (
@@ -23,7 +24,7 @@ export function Footer() {
           <Link href="/instagram-growth">Instagram growth</Link>
           <Link href="/tiktok-growth">TikTok growth</Link>
           <Link href="/youtube-growth">YouTube growth</Link>
-          {services.slice(0, 2).map((service) => <Link href={`/services/${service.slug}`} key={service.slug}>{service.shortTitle}</Link>)}
+          {services.slice(0, 2).map((service) => <Link href={servicePath(service)} key={service.slug}>{service.shortTitle}</Link>)}
         </div>
         <div>
           <h2>Company</h2>

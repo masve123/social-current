@@ -1,6 +1,7 @@
 import { articles } from "@/lib/articles";
 import { services } from "@/lib/services";
 import { site } from "@/lib/site";
+import { servicePath } from "@/lib/service-path";
 
 export const dynamic = "force-static";
 
@@ -20,7 +21,7 @@ ${site.name} provides clearly priced social media growth packages. No password i
 - [FAQ](${site.url}/faq)
 
 ## Services
-${services.map((service) => `- [${service.title}](${site.url}/services/${service.slug}): ${service.description}`).join("\n")}
+${services.map((service) => `- [${service.title}](${site.url}${servicePath(service)}): ${service.description}`).join("\n")}
 
 ## Guides
 ${articles.map((article) => `- [${article.title}](${site.url}/blog/${article.slug}): ${article.description}`).join("\n")}

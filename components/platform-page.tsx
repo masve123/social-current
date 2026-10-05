@@ -7,6 +7,7 @@ import { getArticlesByCategory } from "@/lib/articles";
 import type { Platform } from "@/lib/platforms";
 import { services } from "@/lib/services";
 import { site } from "@/lib/site";
+import { servicePath } from "@/lib/service-path";
 
 export function PlatformPage({ platform }: { platform: Platform }) {
   const platformServices = services.filter((service) => service.platform === platform.name);
@@ -27,7 +28,7 @@ export function PlatformPage({ platform }: { platform: Platform }) {
       itemListElement: platformServices.map((service, index) => ({
         "@type": "ListItem",
         position: index + 1,
-        url: `${site.url}/services/${service.slug}`,
+        url: `${site.url}${servicePath(service)}`,
         name: service.title,
       })),
     },

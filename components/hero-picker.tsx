@@ -5,6 +5,7 @@ import { ArrowUpRight, Eye, Heart, Instagram, MessageCircle, Music2, UsersRound,
 import { useState } from "react";
 import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
 import { calculatePrice, services } from "@/lib/services";
+import { servicePath } from "@/lib/service-path";
 
 const platforms = [
   { name: "Instagram", icon: Instagram },
@@ -40,7 +41,7 @@ export function HeroPicker() {
           if (!service) return null;
           const minimumQuantity = getStandardCheckoutMinimumQuantity(service);
           return (
-            <Link className="hero-picker__goal" href={`/services/${service.slug}`} key={metric} aria-label={`Explore ${service.title}`}>
+            <Link className="hero-picker__goal" href={servicePath(service)} key={metric} aria-label={`Explore ${service.title}`}>
               <span className="hero-picker__goal-icon"><Icon aria-hidden="true" /></span>
               <strong>{platform === "YouTube" && metric === "followers" ? "Subscribers" : label}</strong>
               <small>{hint}</small>

@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ serviceSl
   const service = getServiceByPublicSlug((await params).serviceSlug);
   if (!service) return {};
   const path = servicePath(service);
-  const title = `${service.title} — Packages from $4.99`;
+  const title = `${service.title} — Packages & Pricing`;
   return {
     title,
     description: `${service.description} Compare package types, quantities, delivery estimates, and protection before ordering.`,

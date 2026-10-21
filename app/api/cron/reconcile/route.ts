@@ -1,3 +1,4 @@
+import { pruneCheckoutEvents } from "@/lib/checkout-event-store";
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { recoverPendingOrders } from "@/lib/fulfillment-recovery";
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
   if (a.length !== b.length || !timingSafeEqual(a, b)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   try {
     const result = await recoverPendingOrders();
+    await pruneCheckoutEvents().catch(()=>undefined);
     return NextResponse.json(result, { status: result.errors ? 503 : 200, headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Order reconciliation failed." }, { status: 503 });

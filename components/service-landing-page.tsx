@@ -5,12 +5,10 @@ import { FaqList } from "@/components/faq-list";
 import { JsonLd } from "@/components/json-ld";
 import { PackagePicker } from "@/components/package-picker";
 import { getArticlesByCategory } from "@/lib/articles";
-import { getCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
 import { getPlatform } from "@/lib/platforms";
 import { serviceContent } from "@/lib/service-content";
 import { servicePath } from "@/lib/service-path";
-import { calculatePrice, services, type Service } from "@/lib/services";
-import { getServiceOffers } from "@/lib/smm-offers";
+import { services, type Service } from "@/lib/services";
 import { site } from "@/lib/site";
 
 export function ServiceLandingPage({ service }: { service: Service }) {
@@ -18,9 +16,6 @@ export function ServiceLandingPage({ service }: { service: Service }) {
   const guides = getArticlesByCategory(service.platform).slice(0, 3);
   const related = services.filter((item) => item.platform === service.platform && item.slug !== service.slug);
   const content = serviceContent[service.slug];
-  const offer = getServiceOffers(service)[0];
-  const checkoutMin = getCheckoutMinimumQuantity(service, offer);
-  const startingQuantity = Math.max(service.baseQuantity, checkoutMin);
   const path = servicePath(service);
   const productSchema = {
     "@context": "https://schema.org",
@@ -31,15 +26,7 @@ export function ServiceLandingPage({ service }: { service: Service }) {
     url: `${site.url}${path}`,
     image: `${site.url}/opengraph-image`,
     brand: { "@type": "Brand", name: site.name },
-    offers: {
-      "@type": "AggregateOffer",
-      priceCurrency: "USD",
-      lowPrice: calculatePrice(service, checkoutMin).toFixed(2),
-      highPrice: calculatePrice(service, service.max).toFixed(2),
-      offerCount: Math.floor((service.max - checkoutMin) / service.step) + 1,
-      availability: "https://schema.org/InStock",
-      url: `${site.url}${path}`,
-    },
+
   };
   const faqSchema = {
     "@context": "https://schema.org",
@@ -110,7 +97,7 @@ export function ServiceLandingPage({ service }: { service: Service }) {
 
       {guides.length > 0 && <section className="section shell"><div className="section-heading"><div><span className="eyebrow">Plan the campaign</span><h2>Useful {service.platform} growth <em>guides.</em></h2></div><Link className="text-link text-link--arrow" href="/blog">All growth notes <ArrowRight /></Link></div><div className="resource-list">{guides.map((article) => <Link href={`/blog/${article.slug}`} key={article.slug}><span>{article.category} · {article.readTime}</span><strong>{article.title}</strong><ArrowRight /></Link>)}</div></section>}
 
-      <section className="mini-cta"><div className="shell"><div><span>Ready to move?</span><h2>Start with {startingQuantity.toLocaleString()} {service.metric}.</h2></div><Link className="button button--cream" href={`/order?service=${service.slug}&quantity=${startingQuantity}`}>Continue — ${calculatePrice(service, startingQuantity).toFixed(2)} <ArrowRight /></Link></div></section>
+      <section className="mini-cta"><div className="shell"><div><span>Ready to move?</span><h2>Choose your {service.metric} package.</h2></div><Link className="button button--cream" href="#packages">Check packages and prices <ArrowRight /></Link></div></section>
       <JsonLd data={[productSchema, faqSchema]} />
     </>
   );

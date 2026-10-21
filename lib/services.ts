@@ -313,7 +313,16 @@ export const services: Service[] = [
 export const getService = (slug: string) => services.find((service) => service.slug === slug);
 
 export function calculatePrice(service: Service, quantity: number) {
-  const raw = (quantity / service.baseQuantity) * service.basePrice;
-  const volumeFactor = quantity >= service.baseQuantity * 10 ? 0.84 : quantity >= service.baseQuantity * 5 ? 0.9 : quantity >= service.baseQuantity * 2 ? 0.95 : 1;
-  return Math.max(4.99, raw * volumeFactor);
+  // Interpolate between the advertised bulk prices. Applying a discount to the
+  // entire order at a threshold made larger orders cheaper than smaller ones.
+  const units = quantity / service.baseQuantity;
+  const tiers = [[0, 0], [1, 1], [2, 1.9], [5, 4.5], [10, 8.4]];
+  for (let index = 1; index < tiers.length; index++) {
+    const [endQuantity, endPrice] = tiers[index];
+    const [startQuantity, startPrice] = tiers[index - 1];
+    if (units <= endQuantity) {
+      return service.basePrice * (startPrice + (units - startQuantity) * (endPrice - startPrice) / (endQuantity - startQuantity));
+    }
+  }
+  return service.basePrice * (8.4 + (units - 10) * 0.84);
 }

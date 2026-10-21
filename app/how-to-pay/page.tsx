@@ -1,3 +1,4 @@
+import { TrustWalletGuide } from "@/components/trust-wallet-guide";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cryptoPaymentGuides } from "@/lib/crypto-payment-guide";
@@ -14,6 +15,7 @@ export default function HowToPayPage() {
       <p className="payment-guide__keep-open">Keep your checkout tab open while you read this guide. Your entered details stay there.</p>
     </div></section>
     <div className="shell narrow payment-guide">
+      <section aria-label="Trust Wallet payment walkthrough"><TrustWalletGuide /></section>
       <section aria-labelledby="ready-heading"><h2 id="ready-heading">Already have crypto? Four steps.</h2>
         <ol className="payment-guide__steps">
           <li><h3>Choose the coin and network you can send</h3><p>Match the payment option to your wallet or exchange. USDT has several networks: the name must match exactly. Social Current shows the current minimum order before you continue.</p></li>

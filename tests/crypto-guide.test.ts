@@ -21,3 +21,24 @@ test("every checkout currency has matching payment guidance and a working anchor
     assert.ok(help.includes(guide.shortNetwork));
   }
 });
+
+test("beginner wallet instructions cannot direct a USDT checkout to buy Litecoin",async()=>{
+  const {TrustWalletGuide}=await import("../components/trust-wallet-guide");
+  for(const currency of ["usdtbsc","usdttrc20"] as const) {
+    const html=renderToStaticMarkup(createElement(TrustWalletGuide,{currency,onChooseLitecoin:()=>undefined,amountUsd:15.59}));
+    assert.ok(html.includes("Use Litecoin for this order"));
+    assert.ok(!html.includes("trust-wallet-guide__steps"));
+    assert.ok(!html.includes("trust-wallet-guide__selected"));
+  }
+});
+test("wallet buying steps wait for an available Litecoin checkout",async()=>{
+  const {TrustWalletGuide}=await import("../components/trust-wallet-guide");
+  const blocked=renderToStaticMarkup(createElement(TrustWalletGuide,{currency:"ltc",ready:false}));
+  assert.ok(!blocked.includes("trust-wallet-guide__steps"));
+  const ready=renderToStaticMarkup(createElement(TrustWalletGuide,{currency:"ltc",ready:true,amountUsd:15.59}));
+  assert.ok(ready.includes("trust-wallet-guide__steps"));
+  assert.ok(ready.includes("$15.59 USD"));
+  assert.ok(ready.includes("LTC, not USD"));
+  assert.ok(ready.includes('href="https://trustwallet.com/download"'));
+  assert.ok(!ready.includes('href="https://buy.'));
+});

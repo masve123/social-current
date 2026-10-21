@@ -1,5 +1,6 @@
 "use client";
 
+import { TrustWalletGuide } from "@/components/trust-wallet-guide";
 import { CryptoPaymentHelp } from "@/components/crypto-payment-help";
 import { ArrowRight, CheckCircle2, ExternalLink, LoaderCircle, LockKeyhole } from "lucide-react";
 import Link from "next/link";
@@ -324,6 +325,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
           ))}
         </fieldset>
         <p className="checkout-note">{paymentMethods.find((method) => method.id === paymentMethod)?.note}</p>
+        <TrustWalletGuide currency={paymentMethod} amountUsd={price} disabled={state === "loading"} ready={!checkingPayment && !paymentMinimum?.error && !belowPaymentMinimum} onChooseLitecoin={()=>{if(submitting.current)return;setPaymentMethod("ltc");setState("idle");setMessage("");}} />
         <CryptoPaymentHelp currency={paymentMethod} />
         <div aria-live="polite">
           {checkingPayment && <p className="checkout-note">Checking payment availability…</p>}

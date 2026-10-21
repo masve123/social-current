@@ -487,3 +487,7 @@ input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea {
 .payment-guide__networks { display: flex; gap: 14px; flex-wrap: wrap; margin: 18px 0; font-size: 14px; }
 .payment-guide__network { scroll-margin-top: 110px; margin: 16px 0; }
 .payment-guide__security { padding: 18px; border-left: 4px solid var(--coral); }
+.payment-guide-hero { padding-top: 42px; padding-bottom: 24px; }
+.payment-guide-hero h1 { font-size: clamp(40px, 6vw, 64px); line-height: 1.05; margin: 16px 0; }
+.payment-guide-hero p { font-size: 15px; line-height: 1.65; margin: 14px 0; }
+.payment-guide-hero .payment-guide__keep-open { font-size: 13px; }

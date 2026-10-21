@@ -8,7 +8,7 @@ export const metadata:Metadata={
 };
 export default function HowToPayPage() {
   return <>
-    <section className="page-hero page-hero--compact"><div className="shell narrow">
+    <section className="page-hero page-hero--compact payment-guide-hero"><div className="shell narrow">
       <span className="eyebrow">Payment help</span><h1>Crypto payment, <em>step by step.</em></h1>
       <p>You send the payment from your wallet or exchange. Continuing from Social Current does not charge you automatically. Card payments are not available yet.</p>
       <p className="payment-guide__keep-open">Keep your checkout tab open while you read this guide. Your entered details stay there.</p>

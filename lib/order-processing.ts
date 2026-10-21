@@ -61,9 +61,17 @@ export async function fulfillPaidOrder(publicId: string) {
     }
     const rate = Number(supplierService?.rate);
     const balance = Number(balanceResult.balance);
-    if (!Number.isFinite(rate) || !Number.isFinite(balance)) {
+    if (!supplierService.rate?.trim() || !balanceResult.balance?.trim() || !Number.isFinite(rate) || rate < 0 || !Number.isFinite(balance) || balance < 0) {
       const retry = await markOrderRetryPending(publicId, "Supplier pricing or balance is temporarily unavailable.");
       if (retry) await Promise.allSettled([sendFulfillmentRetryAlert(retry)]);
+      return;
+    }
+    const minimum = Number(supplierService.min);
+    const maximum = Number(supplierService.max);
+    if (!Number.isInteger(minimum) || minimum <= 0 || !Number.isInteger(maximum) || maximum < minimum
+      || order.quantity < minimum || order.quantity > maximum || balanceResult.currency.toUpperCase() !== "USD") {
+      const reviewed = await markOrderManualReview(publicId, "Supplier quantity limits or account currency do not match this order. Review the service before retrying.");
+      if (reviewed) await Promise.allSettled([sendFulfillmentReviewAlert(reviewed)]);
       return;
     }
     if (Number.isFinite(rate)) wholesaleCost = (rate * order.quantity) / 1000;

@@ -1,6 +1,8 @@
 import { after, NextRequest, NextResponse } from "next/server";
 
-import { createNowPaymentsInvoice, isPaidPaymentStatus } from "@/lib/nowpayments";
+import { createNowPaymentsInvoice, getNowPaymentsMinimum, isPaidPaymentStatus, PaymentSetupError } from "@/lib/nowpayments";
+import { isPaymentCurrency } from "@/lib/payment-methods";
+import { refreshOrderPayment } from "@/lib/payment-reconciliation";
 import { fulfillPaidOrder } from "@/lib/order-processing";
 import { recoverOrderIfStale } from "@/lib/fulfillment-recovery";
 import {
@@ -16,18 +18,13 @@ import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/sm
 import { minimumCheckoutUsd } from "@/lib/checkout-pricing";
 import { getService } from "@/lib/services";
 import { getPanelOrderStatus } from "@/lib/smm";
-import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
+import { isProfileService, parseOrderTarget } from "@/lib/profile-target";
 import { verifyProfile } from "@/lib/profile-verification";
 import { site } from "@/lib/site";
+import { orderCapabilities } from "@/lib/order-actions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-function allowedHosts(platform: string) {
-  if (platform === "Instagram") return ["instagram.com", "www.instagram.com"];
-  if (platform === "TikTok") return ["tiktok.com", "www.tiktok.com", "vm.tiktok.com"];
-  return ["youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com"];
-}
 
 function customerStatus(paymentStatus: string, fulfillmentStatus: string, providerStatus?: string | null) {
   if (["invoice_failed", "failed", "expired"].includes(paymentStatus)) return "Payment was not completed";
@@ -54,8 +51,14 @@ export async function POST(request: NextRequest) {
       email?: string;
       comments?: string[];
       acceptedTerms?: boolean;
-      paymentMethod?: "usdtbsc" | "any";
+      paymentMethod?: string;
     };
+    if (!input || typeof input !== "object" || Array.isArray(input)
+      || (input.comments !== undefined && (!Array.isArray(input.comments) || input.comments.some((comment) => typeof comment !== "string")))
+      || typeof input.email !== "string" || typeof input.link !== "string"
+      || typeof input.serviceSlug !== "string" || typeof input.offerId !== "string") {
+      return NextResponse.json({ error: "Check your package, profile link and email before continuing." }, { status: 400 });
+    }
     const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
     if (!await allowCheckoutAttempt(forwardedFor)) {
       return NextResponse.json({ error: "Too many checkout attempts. Please try again later." }, { status: 429 });
@@ -63,7 +66,8 @@ export async function POST(request: NextRequest) {
     if (input.acceptedTerms !== true) {
       return NextResponse.json({ error: "Accept the terms and refund policy to continue." }, { status: 400 });
     }
-    if (input.paymentMethod !== undefined && !["usdtbsc", "any"].includes(input.paymentMethod)) {
+    const payCurrency = input.paymentMethod ?? "usdtbsc";
+    if (!isPaymentCurrency(payCurrency)) {
       return NextResponse.json({ error: "Choose a valid payment method." }, { status: 400 });
     }
     const service = input.serviceSlug ? getService(input.serviceSlug) : undefined;
@@ -78,23 +82,15 @@ export async function POST(request: NextRequest) {
     const step = offer.step ?? service.step;
     if (!Number.isInteger(quantity) || quantity < min || quantity > max || quantity % step !== 0) {
       const detail = offer.customComments
-        ? `Provide between ${min.toLocaleString()} and ${max.toLocaleString()} comments, in multiples of ${step}.`
-        : `Choose a quantity between ${min.toLocaleString()} and ${max.toLocaleString()}.`;
+        ? `Provide between ${min.toLocaleString("en-US")} and ${max.toLocaleString("en-US")} comments, in multiples of ${step}.`
+        : `Choose a quantity between ${min.toLocaleString("en-US")} and ${max.toLocaleString("en-US")}.`;
       return NextResponse.json({ error: detail }, { status: 400 });
     }
 
-    const profileTarget = isProfileService(service) ? parseProfileTarget(service.platform, input.link || "") : null;
-    let target: URL;
-    try {
-      target = new URL(profileTarget?.url || input.link || "");
-    } catch {
-      return NextResponse.json({ error: "Enter a complete public profile or post URL." }, { status: 400 });
-    }
-    if ((isProfileService(service) && !profileTarget) || target.protocol !== "https:" || !allowedHosts(service.platform).includes(target.hostname.toLowerCase())) {
-      return NextResponse.json({ error: `Enter a valid public ${service.platform} URL.` }, { status: 400 });
-    }
-    if (profileTarget) {
-      const profile = await verifyProfile(service.platform, profileTarget.url);
+    const target = parseOrderTarget(service, input.link);
+    if (!target) return NextResponse.json({ error: `Enter a valid public ${service.platform} ${isProfileService(service) ? "profile" : "post or video"} URL.` }, { status: 400 });
+    if (isProfileService(service)) {
+      const profile = await verifyProfile(service.platform, target.url);
       if (profile.status === "not_found" || profile.status === "private") {
         return NextResponse.json({ error: profile.status === "private" ? "Make this profile public before ordering." : "That profile could not be found. Check the username before paying." }, { status: 400 });
       }
@@ -109,6 +105,10 @@ export async function POST(request: NextRequest) {
     if (amount < minimumCheckoutUsd) {
       return NextResponse.json({ error: `Orders must total at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity to continue.` }, { status: 400 });
     }
+    const paymentMinimum = await getNowPaymentsMinimum(payCurrency);
+    if (amount < paymentMinimum) {
+      throw new PaymentSetupError(`This payment method currently requires at least $${paymentMinimum.toFixed(2)}. Increase the quantity or choose another payment method.`, paymentMinimum);
+    }
     publicId = createPublicOrderId();
     await createStoredOrder({
       publicId,
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       serviceSlug: service.slug,
       offerId: offer.id,
       quantity,
-      targetUrl: target.toString(),
+      targetUrl: target.url,
       comments,
       amountUsd: amount,
     });
@@ -125,13 +125,13 @@ export async function POST(request: NextRequest) {
     const invoice = await createNowPaymentsInvoice({
       orderId: publicId,
       amountUsd: amount,
-      description: `${service.shortTitle} — ${offer.label} — ${quantity.toLocaleString()}`,
+      description: `${service.shortTitle} — ${offer.label} — ${quantity.toLocaleString("en-US")}`,
       callbackUrl: `${site.url}/api/payments/nowpayments`,
       successUrl: `${site.url}/order/complete?order=${encodedOrder}`,
       cancelUrl: `${site.url}/order/cancelled?order=${encodedOrder}`,
-      payCurrency: input.paymentMethod === "usdtbsc" ? "usdtbsc" : undefined,
+      payCurrency,
     });
-    await attachPaymentInvoice(publicId, { invoiceId: String(invoice.id), checkoutUrl: invoice.invoice_url });
+    await attachPaymentInvoice(publicId, { invoiceId: String(invoice.id), checkoutUrl: invoice.invoice_url, paymentId: invoice.payment_id });
 
     return NextResponse.json({
       order: publicId,
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "The secure checkout could not be created.";
     if (publicId) await markInvoiceCreationFailed(publicId, message).catch(() => undefined);
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ error: message, ...(error instanceof PaymentSetupError && error.minimumUsd ? { minimum_usd: error.minimumUsd } : {}) }, { status: error instanceof SyntaxError ? 400 : error instanceof PaymentSetupError && error.minimumUsd ? 400 : 502 });
   }
 }
 
@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
   try {
     let order = await findStoredOrder(orderNumber);
     if (!order) return NextResponse.json({ error: "We could not find that order." }, { status: 404 });
+    order = await refreshOrderPayment(order);
 
     if (order.fulfillment_status === "submitting") {
       order = await recoverOrderIfStale(orderNumber) || order;
@@ -193,8 +194,7 @@ export async function GET(request: NextRequest) {
       fulfillment_status: order.fulfillment_status,
       start_count: startCount,
       remains,
-      can_refill: Boolean(order.provider_order_id) && offer.protection.toLowerCase().includes("refill") && ["Completed", "Partial"].includes(order.provider_status || ""),
-      can_cancel: Boolean(order.provider_order_id) && ["Pending", "In progress", "Processing"].includes(order.provider_status || ""),
+      ...orderCapabilities(order),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "We could not find that order.";

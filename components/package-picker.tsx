@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { Check, Clock3, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { type Service } from "@/lib/services";
-import { getCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
+import { getCheckoutMinimumQuantity, normalizeCheckoutQuantity } from "@/lib/checkout-pricing";
 import { calculateOfferPrice, getServiceOffers } from "@/lib/smm-offers";
 
 export function PackagePicker({ service }: { service: Service }) {
@@ -14,12 +14,12 @@ export function PackagePicker({ service }: { service: Service }) {
   const minQuantity = getCheckoutMinimumQuantity(service, offer);
   const maxQuantity = offer.max ?? service.max;
   const step = offer.step ?? service.step;
-  const presets = useMemo(() => {
+  const presets = (() => {
     const values = [service.baseQuantity / 2, service.baseQuantity, service.baseQuantity * 2.5, service.baseQuantity * 5];
     return [...new Set(values.map((value) => Math.max(minQuantity, Math.min(maxQuantity, Math.round(value / step) * step))))];
-  }, [service.baseQuantity, minQuantity, maxQuantity, step]);
+  })();
   const [quantity, setQuantity] = useState(Math.max(service.baseQuantity, minQuantity));
-  const selectedQuantity = Math.max(minQuantity, Math.min(maxQuantity, quantity));
+  const selectedQuantity = normalizeCheckoutQuantity(service, offer, quantity);
   const price = calculateOfferPrice(service, offer.customComments ? minQuantity : selectedQuantity, offer);
   const checkoutParams = new URLSearchParams({ service: service.slug, offer: offer.id, quantity: String(selectedQuantity) });
 
@@ -33,12 +33,12 @@ export function PackagePicker({ service }: { service: Service }) {
           <legend>Choose your follower type</legend>
           <div className="picker__follower-grid">
             {offers.map((item) => {
-              const itemQuantity = Math.max(getCheckoutMinimumQuantity(service, item), Math.min(item.max ?? service.max, selectedQuantity));
+              const itemQuantity = normalizeCheckoutQuantity(service, item, selectedQuantity);
               return (
-                <button type="button" key={item.id} className={offer.id === item.id ? "active" : ""} aria-pressed={offer.id === item.id} onClick={() => setOfferId(item.id)}>
+                <button type="button" key={item.id} className={offer.id === item.id ? "active" : ""} aria-pressed={offer.id === item.id} onClick={() => { setQuantity(normalizeCheckoutQuantity(service, item, selectedQuantity)); setOfferId(item.id); }}>
                   <strong>{item.label}</strong>
                   <small>{item.audience} · {item.protection}</small>
-                  <small>For {itemQuantity.toLocaleString()} followers</small>
+                  <small>For {itemQuantity.toLocaleString("en-US")} followers</small>
                   <span>${calculateOfferPrice(service, itemQuantity, item).toFixed(2)}</span>
                 </button>
               );
@@ -50,7 +50,7 @@ export function PackagePicker({ service }: { service: Service }) {
       {service.metric !== "followers" && offers.length > 1 && (
         <div className="picker__tier">
           <label htmlFor="package-tier">Delivery package</label>
-          <select id="package-tier" value={offer.id} onChange={(event) => setOfferId(event.target.value)}>
+          <select id="package-tier" value={offer.id} onChange={(event) => { const next = offers.find((item) => item.id === event.target.value)!; setQuantity(normalizeCheckoutQuantity(service, next, selectedQuantity)); setOfferId(next.id); }}>
             {offers.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
           </select>
           <p>{offer.description} {offer.protection}.</p>
@@ -69,13 +69,13 @@ export function PackagePicker({ service }: { service: Service }) {
                 aria-pressed={selectedQuantity === preset}
                 onClick={() => setQuantity(preset)}
               >
-                <strong>{preset.toLocaleString()}</strong>
+                <strong>{preset.toLocaleString("en-US")}</strong>
                 <span>{service.metric}</span>
               </button>
             ))}
           </div>
           <label className="range-label" htmlFor="quantity">
-            <span>Custom amount</span><strong aria-live="polite">{selectedQuantity.toLocaleString()}</strong>
+            <span>Custom amount</span><strong aria-live="polite">{selectedQuantity.toLocaleString("en-US")}</strong>
           </label>
           <input
             id="quantity"

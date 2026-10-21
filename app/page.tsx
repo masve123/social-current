@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check, Gauge, LockKeyhole, MessageCircleMore, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Gauge, LockKeyhole, MessageCircleMore } from "lucide-react";
 import { FaqList } from "@/components/faq-list";
 import { HeroPicker } from "@/components/hero-picker";
 import { JsonLd } from "@/components/json-ld";

@@ -110,7 +110,7 @@ export function ServiceLandingPage({ service }: { service: Service }) {
 
       {guides.length > 0 && <section className="section shell"><div className="section-heading"><div><span className="eyebrow">Plan the campaign</span><h2>Useful {service.platform} growth <em>guides.</em></h2></div><Link className="text-link text-link--arrow" href="/blog">All growth notes <ArrowRight /></Link></div><div className="resource-list">{guides.map((article) => <Link href={`/blog/${article.slug}`} key={article.slug}><span>{article.category} · {article.readTime}</span><strong>{article.title}</strong><ArrowRight /></Link>)}</div></section>}
 
-      <section className="mini-cta"><div className="shell"><div><span>Ready to move?</span><h2>Start with {startingQuantity.toLocaleString()} {service.metric}.</h2></div><Link className="button button--cream" href={`/order?service=${service.slug}&quantity=${startingQuantity}`}>Continue — ${calculatePrice(service, startingQuantity).toFixed(2)} <ArrowRight /></Link></div></section>
+      <section className="mini-cta"><div className="shell"><div><span>Ready to move?</span><h2>Start with {startingQuantity.toLocaleString("en-US")} {service.metric}.</h2></div><Link className="button button--cream" href={`/order?service=${service.slug}&quantity=${startingQuantity}`}>Continue — ${calculatePrice(service, startingQuantity).toFixed(2)} <ArrowRight /></Link></div></section>
       <JsonLd data={[productSchema, faqSchema]} />
     </>
   );

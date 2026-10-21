@@ -441,6 +441,9 @@ input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 0; 
 .finder__choices button, .picker__presets button, .service-options button, .quantity-presets button, .payment-methods__option { transition: transform .18s, box-shadow .18s, border-color .18s, background-color .18s; }
 .picker__presets button:hover, .service-options button:not(:disabled):hover, .quantity-presets button:hover { transform: translateY(-2px); border-color: var(--ink); }
 .payment-methods__option:hover { border-color: var(--mint); }
+.page-hero .order-summary p { color: #d1d0c7; font-size: 12px; line-height: 1.5; }
+.page-hero .order-summary .form-message p { color: inherit; }
+.order-summary .form-message .button { padding: 10px 14px; line-height: 1.4; }
 input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea { border-radius: 10px; }
 .form-message { border-radius: 9px; }
 .contact-form__error { margin: 0 0 15px; color: #a83228; font-size: 12px; }

@@ -27,7 +27,12 @@ Create a NOWPayments account, add the wallet that should receive settlements, ge
 ```bash
 NOWPAYMENTS_API_KEY=...
 NOWPAYMENTS_IPN_SECRET=...
+NOWPAYMENTS_PAYOUT_CURRENCY=usdttrc20
 ```
+
+Set `NOWPAYMENTS_PAYOUT_CURRENCY` to the exact settlement wallet currency configured in NOWPayments (the existing production wallet uses USDT on Tron). Checkout checks the current minimum for the selected payment/settlement pair with the same fixed-rate and fee settings used for payment creation. It blocks amounts below that minimum and offers a larger quantity before taking customers to payment. If the minimum cannot be verified, checkout offers a retry or a different method instead of sending customers to an unusable invoice.
+
+The server creates both the invoice and its payment instructions before returning a checkout link. A provider rejection remains visible on our checkout. Payment status is refreshed from the provider during tracking when an existing payment is stale, so a missed callback does not leave it waiting indefinitely.
 
 The application supplies this callback for every invoice:
 
@@ -35,7 +40,7 @@ The application supplies this callback for every invoice:
 https://getsocialcurrent.com/api/payments/nowpayments
 ```
 
-The webhook signature is verified with HMAC-SHA512 before any order can reach the supplier. Configure the currencies offered on the NOWPayments hosted invoice in the NOWPayments dashboard; USDC and USDT are the recommended initial choices.
+The webhook signature is verified with HMAC-SHA512 before any order can reach the supplier. The checkout offers explicit USDT BSC, USDT Tron and Litecoin network choices. Confirm these routes are enabled for the merchant account. Other coins and fiat on-ramp options should only be added after their limits and availability are integrated.
 
 ### 3. Connect SMM World
 
@@ -72,7 +77,7 @@ The same page shows customer support messages saved by `/contact`. You can reply
 ## Order lifecycle
 
 1. The customer chooses a package and submits a public social URL.
-2. The server stores the order and creates a NOWPayments hosted invoice.
+2. Checkout verifies the payment minimum, then the server stores the order and prepares both the NOWPayments invoice and payment instructions.
 3. NOWPayments sends a signed status callback.
 4. Confirmed payments atomically claim the order for fulfillment.
 5. The server checks SMM World service pricing and account balance.
@@ -103,3 +108,11 @@ Set `NEXT_PUBLIC_SITE_URL` to the final canonical HTTPS domain before deployment
 - Add the Google Search Console verification token and submit `/sitemap.xml` after launch.
 - Review prices, service limits, refill terms, and provider service IDs.
 - Have the privacy policy, terms, and refund policy reviewed for the operating company and target markets.
+
+## Checkout verification
+
+Run `npm test`, `npm run lint`, and `npm run build`. The regression suite checks every offered quantity for increasing prices, volume-discount boundaries, every service/offer/payment-method combination, package limits, customer targets, provider minimum failures, payment initialization, signed callbacks, duplicate and delayed updates, refunds racing delivery, concurrent fulfillment, supplier outages, insufficient funds and safe retry behavior.
+
+No tests use `.env.local` or connect to the production database. Database integration tests require an explicitly supplied loopback `TEST_DATABASE_URL` owned by `checkout_test`; without it they are skipped locally. CI fails if that database is missing. `.github/workflows/checkout.yml` provisions an isolated PostgreSQL service and runs the full suite, lint and production build on pushes and pull requests. Configure its `checkout` job as a required branch protection check to enforce it before merging.
+
+Provider responses are simulated in automated tests. A real paid checkout, wallet settlement, supplier delivery and any future Banxa card flow still require a separately authorized low-value acceptance transaction. Banxa must be approved and configured before showing card payment as available.

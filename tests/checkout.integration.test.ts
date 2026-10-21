@@ -1,0 +1,366 @@
+import assert from "node:assert/strict";
+import { after, afterEach, before, beforeEach, mock, test } from "node:test";
+import { NextRequest } from "next/server";
+import { createHmac } from "node:crypto";
+import { services } from "../lib/services";
+import { calculateOfferPrice, getServiceOffers } from "../lib/smm-offers";
+import { getCheckoutMinimumQuantity } from "../lib/checkout-pricing";
+import { paymentMethods } from "../lib/payment-methods";
+import { fulfillPaidOrder } from "../lib/order-processing";
+import { reconcileStaleOrder, markSupplierRequestStarted, claimOrderForFulfillment, makeOrderRetryable } from "../lib/order-store";
+import { POST as webhook } from "../app/api/payments/nowpayments/route";
+import { POST as orderAction } from "../app/api/order/action/route";
+import { POST } from "../app/api/order/route";
+import { database, ensureDatabase } from "../lib/db";
+import { attachPaymentInvoice, createStoredOrder, findStoredOrder, recordPaymentEvent } from "../lib/order-store";
+import { refreshOrderPayment } from "../lib/payment-reconciliation";
+
+const connection = process.env.TEST_DATABASE_URL;
+if (process.env.CI && !connection) throw new Error("CI must run integration tests against an isolated TEST_DATABASE_URL.");
+if (connection) {
+  const parsed = new URL(connection);
+  if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname) || parsed.username !== "checkout_test") {
+    throw new Error("Integration tests require an isolated loopback database owned by checkout_test.");
+  }
+  process.env.DATABASE_URL = connection;
+  process.env.NOWPAYMENTS_API_KEY = "test-only";
+  process.env.NOWPAYMENTS_PAYOUT_CURRENCY = "usdttrc20";
+  process.env.NOWPAYMENTS_IPN_SECRET = "test-signing-secret";
+  process.env.SMM_SMMWORLD_API_KEY = "test-supplier-key";
+  delete process.env.RESEND_API_KEY;
+  delete process.env.HIKER_API_KEY;
+}
+const integration = connection ? test : test.skip;
+const checkout = { serviceSlug: "instagram-followers", offerId: "usa-female", quantity: 200, link: "@instagram", email: "checkout-test@example.com", acceptedTerms: true, paymentMethod: "usdtbsc" };
+const request = (body: unknown) => new NextRequest("https://example.com/api/order", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
+
+before(async () => { if (connection) await ensureDatabase(); });
+beforeEach(async () => {
+  if (connection) await database()`TRUNCATE social_current_payment_events, social_current_orders, social_current_checkout_attempts`;
+});
+afterEach(() => mock.restoreAll());
+after(async () => { if (connection) await database().end(); });
+
+function gateway(options: { minimum?: number; rejectPayment?: boolean; callbackDuringSetup?: boolean } = {}) {
+  let orderId = "";
+  let amount = 0;
+  mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+    if (/^https:\/\/(www\.)?(instagram\.com|tiktok\.com|youtube\.com)\//.test(String(url))) return new Response(null, { status: 302 });
+    assert.ok(String(url).startsWith("https://api.nowpayments.io/v1/"), `Unexpected network call: ${url}`);
+    if (url.includes("/min-amount?")) return Response.json({ min_amount: 1, fiat_equivalent: options.minimum ?? 6 });
+    if (url.endsWith("/invoice")) {
+      const body = JSON.parse(init!.body as string);
+      orderId = body.order_id;
+      amount = body.price_amount;
+      return Response.json({ id: "123", invoice_url: "https://nowpayments.io/payment?iid=123" });
+    }
+    assert.ok(url.endsWith("/invoice-payment"));
+    if (options.rejectPayment) return Response.json({ message: "amountTo is too small" }, { status: 400 });
+    if (options.callbackDuringSetup) {
+      await recordPaymentEvent({ rawBody: "test-paid-race", publicId: orderId, paymentStatus: "finished", paymentId: "456", amountMatches: true, payload: { order_id: orderId, payment_id: "456", payment_status: "finished", price_amount: amount, price_currency: "usd" } });
+    }
+    return Response.json({ payment_id: "456", pay_address: "test-address", pay_amount: amount });
+  });
+}
+
+integration("checkout stores corrected price and only redirects after payment initialization", async () => {
+  gateway();
+  const response = await POST(request(checkout));
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  assert.equal(result.amount, "15.59");
+  assert.equal(result.checkout_url, "https://nowpayments.io/payment?iid=123");
+  const order = await findStoredOrder(result.order);
+  assert.equal(order?.amount_usd, "15.59");
+  assert.equal(order?.payment_id, "456");
+  assert.equal(order?.payment_status, "waiting");
+});
+
+integration("provider minimum rejects checkout before creating an order or invoice", async () => {
+  gateway({ minimum: 20 });
+  const response = await POST(request(checkout));
+  assert.equal(response.status, 400);
+  const result = await response.json();
+  assert.equal(result.minimum_usd, 20.01);
+  const [count] = await database()`SELECT COUNT(*)::int AS count FROM social_current_orders`;
+  assert.equal(count.count, 0);
+});
+
+integration("provider payment failure is recorded and never returns an unusable redirect", async () => {
+  gateway({ rejectPayment: true });
+  const response = await POST(request(checkout));
+  assert.equal(response.status, 502);
+  const result = await response.json();
+  assert.match(result.error, /minimum/);
+  assert.equal(result.checkout_url, undefined);
+  const [order] = await database()`SELECT payment_status, failure_reason FROM social_current_orders`;
+  assert.equal(order.payment_status, "invoice_failed");
+  assert.match(order.failure_reason, /minimum/);
+});
+
+integration("a payment callback arriving before invoice attachment stays paid", async () => {
+  gateway({ callbackDuringSetup: true });
+  const response = await POST(request(checkout));
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  const order = await findStoredOrder(result.order);
+  assert.equal(order?.payment_status, "finished");
+  assert.equal(order?.payment_id, "456");
+  assert.ok(order?.paid_at);
+});
+
+integration("malformed input and invalid quantity steps return validation errors", async () => {
+  gateway();
+  for (const body of [null, [], { ...checkout, comments: [123] }, { ...checkout, email: 123 }, { ...checkout, quantity: 150 }, { ...checkout, paymentMethod: "any" }]) {
+    const response = await POST(request(body));
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+  const [count] = await database()`SELECT COUNT(*)::int AS count FROM social_current_orders`;
+  assert.equal(count.count, 0);
+});
+
+async function staleOrder() {
+  const publicId = "SC-TEST-RECONCILIATION";
+  await createStoredOrder({ publicId, email: "test@example.com", serviceSlug: "instagram-followers", offerId: "standard", quantity: 1000, targetUrl: "https://www.instagram.com/instagram/", comments: [], amountUsd: 12.99 });
+  await attachPaymentInvoice(publicId, { invoiceId: "123", checkoutUrl: "https://nowpayments.io/payment?iid=123", paymentId: "456" });
+  await database()`UPDATE social_current_orders SET updated_at = NOW() - INTERVAL '1 minute' WHERE public_id = ${publicId}`;
+  return (await findStoredOrder(publicId))!;
+}
+
+integration("tracking recovers an expired payment when its webhook was missed", async () => {
+  const order = await staleOrder();
+  mock.method(globalThis, "fetch", async () => Response.json({ payment_id: "456", order_id: order.public_id, payment_status: "expired", price_currency: "usd", price_amount: 12.99, actually_paid: 0 }));
+  const refreshed = await refreshOrderPayment(order);
+  assert.equal(refreshed.payment_status, "expired");
+  assert.equal((await findStoredOrder(order.public_id))?.payment_status, "expired");
+});
+
+integration("tracking validates order identity and amount before recovering a payment", async () => {
+  const order = await staleOrder();
+  mock.method(globalThis, "fetch", async () => Response.json({ payment_id: "456", order_id: "SC-DIFFERENT", payment_status: "finished", price_currency: "usd", price_amount: 12.99 }));
+  assert.equal((await refreshOrderPayment(order)).payment_status, "waiting");
+  mock.restoreAll();
+  mock.method(globalThis, "fetch", async () => Response.json({ payment_id: "456", order_id: order.public_id, payment_status: "finished", price_currency: "usd", price_amount: 1 }));
+  const mismatched = await refreshOrderPayment(order);
+  assert.equal(mismatched.payment_status, "amount_mismatch");
+  assert.equal(mismatched.fulfillment_status, "manual_review");
+  assert.equal(mismatched.paid_at, null);
+});
+
+integration("tracking recovers a missed paid callback without submitting to the supplier", async () => {
+  const order = await staleOrder();
+  mock.method(globalThis, "fetch", async () => Response.json({ payment_id: "456", order_id: order.public_id, payment_status: "finished", price_currency: "usd", price_amount: 12.99 }));
+  const refreshed = await refreshOrderPayment(order);
+  assert.equal(refreshed.payment_status, "finished");
+  assert.ok(refreshed.paid_at);
+  assert.equal(refreshed.provider_order_id, null);
+});
+
+
+// Cross-product: every storefront service/offer can create a checkout through
+// every offered currency. Provider calls are simulated; database writes stay local.
+for (const service of services) for (const offer of getServiceOffers(service)) for (const method of paymentMethods) {
+  integration(`matrix: ${service.slug}/${offer.id}/${method.id}`, async () => {
+    gateway({ minimum: 1 });
+    const quantity = getCheckoutMinimumQuantity(service, offer, 20);
+    const profile = service.metric === "followers" || service.metric === "subscribers";
+    const link = profile ? "@checkouttest" : service.platform === "Instagram" ? "https://www.instagram.com/p/AbCdEf/" : service.platform === "TikTok" ? "https://www.tiktok.com/@checkouttest/video/1234567890123456789" : "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const response = await POST(request({ ...checkout, serviceSlug: service.slug, offerId: offer.id, quantity, link, paymentMethod: method.id, ...(offer.customComments ? { comments: Array.from({length: quantity}, (_, index) => `Comment ${index}`) } : {}) }));
+    assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
+    const result = await response.json();
+    assert.equal(result.amount, calculateOfferPrice(service, quantity, offer).toFixed(2));
+    const order = (await findStoredOrder(result.order))!;
+    assert.equal(order.quantity, quantity);
+    assert.equal(order.service_slug, service.slug);
+    assert.equal(order.offer_id, offer.id);
+    assert.equal(order.payment_status, "waiting");
+    assert.equal(order.provider_order_id, null);
+  });
+}
+
+async function paymentEvent(publicId: string, status: string, rawBody = `event-${status}`, amountMatches = true) {
+  return recordPaymentEvent({ publicId, paymentStatus: status, rawBody, paymentId: "456", amountMatches, payload: { order_id: publicId, payment_id: "456", payment_status: status, price_currency: "usd", price_amount: 12.99 } });
+}
+
+integration("duplicate payment event cannot revive a refunded order", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  await paymentEvent(order.public_id, "refunded");
+  await paymentEvent(order.public_id, "finished");
+  assert.equal((await findStoredOrder(order.public_id))!.payment_status, "refunded");
+  const [count] = await database()`SELECT COUNT(*)::int AS count FROM social_current_payment_events`;
+  assert.equal(count.count, 2);
+});
+
+integration("a fresh but delayed paid event cannot revive a refunded order", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  await paymentEvent(order.public_id, "refunded");
+  await paymentEvent(order.public_id, "confirmed", "delayed-confirmed");
+  assert.equal((await findStoredOrder(order.public_id))!.payment_status, "refunded");
+});
+
+integration("out-of-order waiting cannot move an expired payment backwards", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "expired");
+  await paymentEvent(order.public_id, "waiting");
+  assert.equal((await findStoredOrder(order.public_id))!.payment_status, "expired");
+});
+
+integration("paid status never regresses when callbacks arrive out of order", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  for (const status of ["waiting", "confirming", "confirmed", "sending", "failed", "expired", "partially_paid"]) {
+    await paymentEvent(order.public_id, status);
+    assert.equal((await findStoredOrder(order.public_id))!.payment_status, "finished", status);
+  }
+});
+
+integration("signed unpaid callbacks are accepted once; invalid signatures never change the order", async () => {
+  const order = await staleOrder();
+  const body = JSON.stringify({ order_id: order.public_id, payment_id: "456", payment_status: "expired", price_amount: 12.99, price_currency: "usd" });
+  const sorted = Object.fromEntries(Object.entries(JSON.parse(body)).sort(([a],[b]) => a.localeCompare(b)));
+  const signature = createHmac("sha512", "test-signing-secret").update(JSON.stringify(sorted)).digest("hex");
+  const callback = (sig: string) => new NextRequest("https://example.com/api/payments/nowpayments", { method: "POST", body, headers: { "x-nowpayments-sig": sig } });
+  assert.equal((await webhook(callback("invalid"))).status, 401);
+  assert.equal((await findStoredOrder(order.public_id))!.payment_status, "waiting");
+  assert.equal((await webhook(callback(signature))).status, 200);
+  assert.equal((await webhook(callback(signature))).status, 200);
+  assert.equal((await findStoredOrder(order.public_id))!.payment_status, "expired");
+  const [count] = await database()`SELECT COUNT(*)::int AS count FROM social_current_payment_events`;
+  assert.equal(count.count, 1);
+});
+
+function supplier(options: { balance?: string; rate?: string; min?: string; max?: string; missing?: boolean; reject?: boolean; timeout?: boolean; refundOnBalance?: string; refundOnAdd?: string } = {}) {
+  let submissions = 0;
+  mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+    assert.equal(url, "https://smmworldpanel.com/api/v2");
+    const params = new URLSearchParams(init!.body as string);
+    const action = params.get("action");
+    if (action === "balance") {
+      if (options.refundOnBalance) await paymentEvent(options.refundOnBalance, "refunded");
+      return Response.json({ balance: options.balance ?? "100", currency: "USD" });
+    }
+    if (action === "services") return Response.json(options.missing ? [] : [{ service: "6669", rate: options.rate ?? "1", min: options.min ?? "100", max: options.max ?? "50000" }]);
+    if (action === "add") {
+      submissions++;
+      if (options.refundOnAdd) await paymentEvent(options.refundOnAdd, "refunded");
+      if (options.timeout) throw new Error("Network interrupted after supplier received request");
+      if (options.reject) return Response.json({ error: "Order rejected" });
+      return Response.json({ order: "supplier-123", status: "Pending" });
+    }
+    throw new Error(`Unexpected supplier action ${action}`);
+  });
+  return () => submissions;
+}
+
+integration("concurrent fulfillment calls submit a paid order only once", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  const submissions = supplier();
+  await Promise.all(Array.from({length: 5}, () => fulfillPaidOrder(order.public_id)));
+  assert.equal(submissions(), 1);
+  assert.equal((await findStoredOrder(order.public_id))!.fulfillment_status, "submitted");
+});
+
+for (const status of ["waiting", "expired", "failed", "partially_paid", "refunded", "amount_mismatch"]) {
+  integration(`unpaid ${status} never reaches the supplier`, async () => {
+    const order = await staleOrder();
+    await paymentEvent(order.public_id, status);
+    const submissions = supplier();
+    await fulfillPaidOrder(order.public_id);
+    assert.equal(submissions(), 0);
+    assert.equal((await findStoredOrder(order.public_id))!.provider_order_id, null);
+  });
+}
+
+integration("insufficient supplier funds queue the order and a funded retry submits it once", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  let submissions = supplier({balance: "0"});
+  await fulfillPaidOrder(order.public_id);
+  assert.equal(submissions(), 0);
+  assert.equal((await findStoredOrder(order.public_id))!.fulfillment_status, "queued_supplier_funds");
+  mock.restoreAll();
+  submissions = supplier();
+  await makeOrderRetryable(order.public_id);
+  await fulfillPaidOrder(order.public_id);
+  await fulfillPaidOrder(order.public_id);
+  assert.equal(submissions(), 1);
+});
+
+for (const scenario of [{name:"missing service", missing:true}, {name:"ambiguous timeout", timeout:true}, {name:"supplier rejection", reject:true}]) {
+  integration(`${scenario.name} requires review and never automatically resubmits`, async () => {
+    const order = await staleOrder();
+    await paymentEvent(order.public_id, "finished");
+    const submissions = supplier(scenario);
+    await fulfillPaidOrder(order.public_id);
+    assert.equal((await findStoredOrder(order.public_id))!.fulfillment_status, "manual_review");
+    await fulfillPaidOrder(order.public_id);
+    assert.equal(submissions(), scenario.missing ? 0 : 1);
+  });
+}
+
+integration("refund during supplier checks prevents the supplier submission", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  const submissions = supplier({refundOnBalance:order.public_id});
+  await fulfillPaidOrder(order.public_id);
+  assert.equal(submissions(), 0);
+});
+
+for (const range of [{min:"2000",max:"50000"}, {min:"100",max:"500"}]) {
+  integration(`supplier quantity limits ${range.min}–${range.max} are enforced before submission`, async () => {
+    const order = await staleOrder();
+    await paymentEvent(order.public_id, "finished");
+    const submissions = supplier(range);
+    await fulfillPaidOrder(order.public_id);
+    assert.equal(submissions(), 0);
+    assert.equal((await findStoredOrder(order.public_id))!.fulfillment_status, "manual_review");
+  });
+}
+
+integration("negative supplier rates cannot create an order", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  const submissions = supplier({rate:"-1"});
+  await fulfillPaidOrder(order.public_id);
+  assert.equal(submissions(), 0);
+});
+
+for (const contacted of [false, true]) {
+  integration(`interrupted worker ${contacted ? "after" : "before"} supplier contact recovers safely`, async () => {
+    const order = await staleOrder();
+    await paymentEvent(order.public_id, "finished");
+    await claimOrderForFulfillment(order.public_id);
+    if (contacted) await markSupplierRequestStarted(order.public_id);
+    await database()`UPDATE social_current_orders SET updated_at=NOW()-INTERVAL '6 minutes' WHERE public_id=${order.public_id}`;
+    const recovered = await reconcileStaleOrder(order.public_id);
+    assert.equal(recovered!.fulfillment_status, contacted ? "manual_review" : "retry");
+  });
+}
+
+integration("malformed order action is rejected as a validation error", async () => {
+  assert.equal((await orderAction(new NextRequest("https://example.com/api/order/action", {method:"POST",body:"null"}))).status, 400);
+});
+
+integration("refund while supplier submission is in flight retains its reference and requires review", async () => {
+  const order = await staleOrder();
+  await paymentEvent(order.public_id, "finished");
+  const submissions = supplier({refundOnAdd: order.public_id});
+  await fulfillPaidOrder(order.public_id);
+  const updated = (await findStoredOrder(order.public_id))!;
+  assert.equal(submissions(), 1);
+  assert.equal(updated.provider_order_id, "supplier-123");
+  assert.equal(updated.payment_status, "refunded");
+  assert.equal(updated.fulfillment_status, "manual_review");
+  await fulfillPaidOrder(order.public_id);
+  assert.equal(submissions(), 1);
+});
+
+for (const body of ["null", "[]", "42", "invalid JSON"]) {
+  integration(`malformed payment update ${body} returns a validation error`, async () => {
+    const response = await webhook(new NextRequest("https://example.com/api/payments/nowpayments", {method:"POST", body}));
+    assert.equal(response.status, 400);
+  });
+}

@@ -85,13 +85,16 @@ export async function allowCheckoutAttempt(ipAddress: string) {
 export async function attachPaymentInvoice(publicId: string, input: {
   invoiceId: string;
   checkoutUrl: string;
+  paymentId?: string;
 }) {
   await ensureDatabase();
   const sql = database();
   const [order] = await sql<StoredOrder[]>`
     UPDATE social_current_orders
     SET payment_invoice_id = ${input.invoiceId}, checkout_url = ${input.checkoutUrl},
-        payment_status = 'waiting', updated_at = NOW(), failure_reason = NULL
+        payment_id = COALESCE(payment_id, ${input.paymentId || null}),
+        payment_status = CASE WHEN payment_status = 'creating' THEN 'waiting' ELSE payment_status END,
+        updated_at = NOW(), failure_reason = CASE WHEN payment_status = 'creating' THEN NULL ELSE failure_reason END
     WHERE public_id = ${publicId}
     RETURNING *
   `;
@@ -104,7 +107,7 @@ export async function markInvoiceCreationFailed(publicId: string, reason: string
   await sql`
     UPDATE social_current_orders
     SET payment_status = 'invoice_failed', failure_reason = ${reason}, updated_at = NOW()
-    WHERE public_id = ${publicId}
+    WHERE public_id = ${publicId} AND payment_status IN ('creating', 'waiting')
   `;
 }
 
@@ -129,22 +132,28 @@ export async function recordPaymentEvent(input: {
   const sql = database();
   const eventId = createHash("sha256").update(input.rawBody).digest("hex");
   return sql.begin(async (tx) => {
-    const [current] = await tx<{ payment_status: string }[]>`
-      SELECT payment_status FROM social_current_orders
+    const [current] = await tx<StoredOrder[]>`
+      SELECT * FROM social_current_orders
       WHERE public_id = ${input.publicId} FOR UPDATE
     `;
     if (!current) throw new Error("Order not found for payment event.");
-    await tx`
+    const inserted = await tx`
       INSERT INTO social_current_payment_events (event_id, public_id, payment_status, payload)
       VALUES (${eventId}, ${input.publicId}, ${input.paymentStatus}, ${tx.json(input.payload)})
       ON CONFLICT (event_id) DO NOTHING
+      RETURNING event_id
     `;
+    if (inserted.length === 0) return current;
     const statusRank = ["waiting", "confirming", "confirmed", "sending", "finished"];
     const currentRank = statusRank.indexOf(current.payment_status);
     const nextRank = statusRank.indexOf(input.paymentStatus);
-    const keepCurrent = (isPaidPaymentStatus(current.payment_status) && !isPaidPaymentStatus(input.paymentStatus) && input.paymentStatus !== "refunded")
+    const samePayment = !input.paymentId || !current.payment_id || input.paymentId === current.payment_id;
+    const keepCurrent = current.payment_status === "refunded"
+      || (samePayment && ["expired", "failed"].includes(current.payment_status) && ["waiting", "confirming", "partially_paid"].includes(input.paymentStatus))
+      || (isPaidPaymentStatus(current.payment_status) && !isPaidPaymentStatus(input.paymentStatus) && input.paymentStatus !== "refunded")
       || (currentRank > nextRank && nextRank >= 0);
-    const paymentStatus = keepCurrent ? current.payment_status : input.paymentStatus;
+    if (keepCurrent) return current;
+    const paymentStatus = input.paymentStatus;
     const status = input.amountMatches ? paymentStatus : "amount_mismatch";
     const [order] = await tx<StoredOrder[]>`
       UPDATE social_current_orders
@@ -152,6 +161,8 @@ export async function recordPaymentEvent(input: {
           payment_status = ${status}, payment_payload = ${tx.json(input.payload)},
           fulfillment_status = CASE
             WHEN ${input.amountMatches} = FALSE THEN 'manual_review'
+            WHEN ${paymentStatus} = 'refunded' AND provider_order_id IS NULL AND supplier_request_started_at IS NULL THEN 'canceled'
+            WHEN ${paymentStatus} = 'refunded' AND provider_order_id IS NULL THEN 'manual_review'
             ELSE fulfillment_status
           END,
           failure_reason = CASE
@@ -181,6 +192,7 @@ export async function claimOrderForFulfillment(publicId: string) {
         failure_reason = NULL, updated_at = NOW()
     WHERE public_id = ${publicId}
       AND payment_status IN ('confirmed', 'sending', 'finished')
+      AND provider_order_id IS NULL
       AND fulfillment_status IN ('awaiting_payment', 'queued_supplier_funds', 'retry')
     RETURNING *
   `;
@@ -194,6 +206,7 @@ export async function markSupplierRequestStarted(publicId: string) {
     UPDATE social_current_orders
     SET supplier_request_started_at = NOW(), updated_at = NOW()
     WHERE public_id = ${publicId} AND fulfillment_status = 'submitting'
+      AND payment_status IN ('confirmed', 'sending', 'finished')
       AND supplier_request_started_at IS NULL AND provider_order_id IS NULL
     RETURNING *
   `;
@@ -254,7 +267,9 @@ export async function markOrderQueued(publicId: string, reason: string, wholesal
     UPDATE social_current_orders
     SET fulfillment_status = 'queued_supplier_funds', failure_reason = ${reason},
         wholesale_cost = COALESCE(${wholesaleCost ?? null}, wholesale_cost), updated_at = NOW()
-    WHERE public_id = ${publicId}
+    WHERE public_id = ${publicId} AND fulfillment_status = 'submitting'
+      AND payment_status IN ('confirmed', 'sending', 'finished')
+      AND provider_order_id IS NULL AND supplier_request_started_at IS NULL
     RETURNING *
   `;
   return order;
@@ -295,10 +310,12 @@ export async function markOrderSubmitted(publicId: string, input: {
   const sql = database();
   const [order] = await sql<StoredOrder[]>`
     UPDATE social_current_orders
-    SET fulfillment_status = 'submitted', provider = ${input.provider},
+    SET fulfillment_status = CASE WHEN payment_status IN ('confirmed', 'sending', 'finished') THEN 'submitted' ELSE 'manual_review' END,
+        provider = ${input.provider},
         provider_order_id = ${input.providerOrderId}, provider_status = ${input.providerStatus},
         wholesale_cost = COALESCE(${input.wholesaleCost ?? null}, wholesale_cost),
-        failure_reason = NULL, submitted_at = NOW(), updated_at = NOW()
+        failure_reason = CASE WHEN payment_status IN ('confirmed', 'sending', 'finished') THEN NULL ELSE 'Payment changed while the supplier request was in flight. Review the supplier order before taking another action.' END,
+        submitted_at = NOW(), updated_at = NOW()
     WHERE public_id = ${publicId}
     RETURNING *
   `;

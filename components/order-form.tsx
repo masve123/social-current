@@ -2,11 +2,12 @@
 
 import { ArrowRight, CheckCircle2, ExternalLink, LoaderCircle, LockKeyhole } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
-import { getCheckoutMinimumQuantity, minimumCheckoutUsd } from "@/lib/checkout-pricing";
+import { getCheckoutMinimumQuantity, minimumCheckoutUsd, normalizeCheckoutQuantity } from "@/lib/checkout-pricing";
+import { paymentMethods, type PaymentCurrency } from "@/lib/payment-methods";
 import { services } from "@/lib/services";
-import { isProfileService, parseProfileTarget } from "@/lib/profile-target";
+import { isProfileService, parseProfileTarget, parseOrderTarget } from "@/lib/profile-target";
 
 type ProfileCheck = { status: "verified" | "not_found" | "private" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
@@ -29,20 +30,27 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
   const [quantity, setQuantity] = useState(
     initialQuantity && initialQuantity >= firstOfferMin && initialQuantity <= firstOfferMax && initialQuantity % firstOfferStep === 0
       ? initialQuantity
-      : Math.max(firstOfferMin, Math.min(firstOfferMax, initial.baseQuantity)),
+      : normalizeCheckoutQuantity(initial, firstOffer, initial.baseQuantity),
   );
   const [editingPackage, setEditingPackage] = useState(!hasSelectedPackage);
   const [commentsText, setCommentsText] = useState("");
   const [link, setLink] = useState("");
   const [email, setEmail] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"usdtbsc" | "any">("usdtbsc");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentCurrency>("usdtbsc");
+  const [paymentMinimum, setPaymentMinimum] = useState<{ currency: PaymentCurrency; minimum?: number; error?: string } | null>(null);
+  const [minimumRefresh, setMinimumRefresh] = useState(0);
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const submitting = useRef(false);
   const [profileCheck, setProfileCheck] = useState<ProfileCheck | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const comments = useMemo(() => commentsText.split("\n").map((item) => item.trim()).filter(Boolean), [commentsText]);
   const pricedQuantity = offer.customComments ? Math.max(offerMin, comments.length) : quantity;
   const price = calculateOfferPrice(service, pricedQuantity, offer);
+  const checkingPayment = paymentMinimum?.currency !== paymentMethod;
+  const requiredMinimum = Math.max(minimumCheckoutUsd, paymentMinimum?.currency === paymentMethod ? paymentMinimum.minimum ?? minimumCheckoutUsd : minimumCheckoutUsd);
+  const requiredQuantity = getCheckoutMinimumQuantity(service, offer, requiredMinimum);
+  const belowPaymentMinimum = Number(price.toFixed(2)) < requiredMinimum;
   const profileService = isProfileService(service);
   const checkProfileAutomatically = profileService && (service.platform !== "Instagram" || instagramLookupEnabled);
   const activeGoal = service.metric === "subscribers" ? "followers" : service.metric;
@@ -51,7 +59,21 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
     .map((value) => Math.min(offerMax, Math.max(offerMin, Math.round(value / offerStep) * offerStep))))];
 
   useEffect(() => {
-    if (!checkProfileAutomatically || !link.trim() || !parsedProfile) return;
+    const controller = new AbortController();
+    fetch(`/api/payments/minimum?currency=${paymentMethod}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !Number.isFinite(result.minimum_usd) || result.minimum_usd <= 0) throw new Error(result.error || "Payment availability could not be checked.");
+        if (!controller.signal.aborted) setPaymentMinimum({ currency: paymentMethod, minimum: result.minimum_usd });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setPaymentMinimum({ currency: paymentMethod, error: error instanceof Error ? error.message : "Payment availability could not be checked." });
+      });
+    return () => controller.abort();
+  }, [paymentMethod, minimumRefresh]);
+
+  useEffect(() => {
+    if (!checkProfileAutomatically || !link.trim() || !parseProfileTarget(service.platform, link)) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setCheckingProfile(true);
@@ -71,13 +93,14 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
       }
     }, 600);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [link, parsedProfile?.url, checkProfileAutomatically, service.platform]);
+  }, [link, checkProfileAutomatically, service.platform]);
 
   function changeService(slug: string) {
+    if (submitting.current) return;
     const next = services.find((item) => item.slug === slug) || fallback;
     setServiceSlug(slug);
     setOfferId(getServiceOffers(next)[0].id);
-    setQuantity(Math.max(next.baseQuantity, getCheckoutMinimumQuantity(next, getServiceOffers(next)[0])));
+    setQuantity(normalizeCheckoutQuantity(next, getServiceOffers(next)[0], next.baseQuantity));
     setCommentsText("");
     setLink("");
     setProfileCheck(null);
@@ -86,16 +109,21 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
   }
 
   function changeOffer(id: string) {
+    if (submitting.current) return;
     const next = getServiceOffer(service, id);
-    const min = getCheckoutMinimumQuantity(service, next);
-    const max = next.max ?? service.max;
     setOfferId(next.id);
-    setQuantity((current) => Math.min(max, Math.max(min, current)));
+    setQuantity((current) => normalizeCheckoutQuantity(service, next, current));
     setState("idle");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current || checkingPayment || paymentMinimum?.error || belowPaymentMinimum) return;
+    if (!profileService && !parseOrderTarget(service, link)) {
+      setState("error");
+      setMessage(`Enter the link to a public ${service.platform} post or video, rather than a profile.`);
+      return;
+    }
     if (profileService && (!parsedProfile || profileCheck?.status === "not_found" || profileCheck?.status === "private")) {
       setState("error");
       setMessage(profileCheck?.status === "private" ? "Make this profile public before ordering." : profileCheck?.status === "not_found" ? "That profile could not be found. Check the username before paying." : "Enter a valid profile username or URL.");
@@ -106,6 +134,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
       setMessage(`Orders must total at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity${offer.customComments ? " or add more comments" : ""} to continue.`);
       return;
     }
+    submitting.current = true;
     setState("loading");
     setMessage("");
     try {
@@ -115,11 +144,13 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, paymentMethod, acceptedTerms: true }),
       });
       const data = await response.json();
+      if (typeof data.minimum_usd === "number") setPaymentMinimum({ currency: paymentMethod, minimum: data.minimum_usd });
       if (!response.ok) throw new Error(data.error || "We could not place the order.");
       setState("success");
       setMessage(`Order ${data.order} was created. Opening secure payment…`);
       window.location.assign(data.checkout_url);
     } catch (error) {
+      submitting.current = false;
       setState("error");
       setMessage(error instanceof Error ? error.message : "We could not place the order.");
     }
@@ -131,7 +162,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         {hasSelectedPackage && (
           <div className="selected-package">
             <div className="selected-package__top"><span className="eyebrow">Your selection</span><button type="button" onClick={() => setEditingPackage((current) => !current)} aria-expanded={editingPackage}>{editingPackage ? "Done editing" : "Change package"}</button></div>
-            <div className="selected-package__details"><strong>{service.shortTitle}</strong><span>{offer.label} · {offer.customComments ? "Your own comments" : `${quantity.toLocaleString()} ${service.metric}`}</span></div>
+            <div className="selected-package__details"><strong>{service.shortTitle}</strong><span>{offer.label} · {offer.customComments ? "Your own comments" : `${quantity.toLocaleString("en-US")} ${service.metric}`}</span></div>
           </div>
         )}
         {hasSelectedPackage && !editingPackage && service.metric === "followers" && offers.length > 1 && (
@@ -187,7 +218,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         </div>
         {offer.customComments ? (
           <label className="comments-field">
-            <span>Comments <strong>{comments.length.toLocaleString()}</strong></span>
+            <span>Comments <strong>{comments.length.toLocaleString("en-US")}</strong></span>
             <textarea value={commentsText} onChange={(event) => setCommentsText(event.target.value)} rows={8} placeholder={"Love this perspective!\nThis was really helpful.\nGreat work on this one."} required />
           </label>
         ) : (
@@ -195,11 +226,11 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
             <div className="quantity-presets" aria-label="Popular quantities">
               {quantityPresets.map((preset) => (
                 <button key={preset} type="button" aria-pressed={quantity === preset} onClick={() => setQuantity(preset)}>
-                  <strong>{preset.toLocaleString()}</strong><small>${calculateOfferPrice(service, preset, offer).toFixed(2)}</small>
+                  <strong>{preset.toLocaleString("en-US")}</strong><small>${calculateOfferPrice(service, preset, offer).toFixed(2)}</small>
                 </button>
               ))}
             </div>
-            <label className="range-label" htmlFor="order-quantity"><span>Quantity</span><strong>{quantity.toLocaleString()}</strong></label>
+            <label className="range-label" htmlFor="order-quantity"><span>Quantity</span><strong>{quantity.toLocaleString("en-US")}</strong></label>
             <input id="order-quantity" className="range" type="range" min={offerMin} max={offerMax} step={offerStep} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />
           </>
         )}
@@ -207,7 +238,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         </div>}
         {!editingPackage && offer.customComments && (
           <label className="comments-field comments-field--selected">
-            <span>Write your comments <strong>{comments.length.toLocaleString()}</strong></span>
+            <span>Write your comments <strong>{comments.length.toLocaleString("en-US")}</strong></span>
             <textarea value={commentsText} onChange={(event) => setCommentsText(event.target.value)} rows={6} placeholder={"Love this perspective!\nThis was really helpful.\nGreat work on this one."} required />
             <small>One comment per line. Minimum {offerMin}, in multiples of {offerStep}.</small>
           </label>
@@ -235,28 +266,43 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         <h2>{service.shortTitle}</h2>
         <div className="summary-row"><span>Package</span><strong>{offer.label}</strong></div>
         <div className="summary-row"><span>Audience</span><strong>{offer.audience}</strong></div>
-        <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString()}</strong></div>
+        <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString("en-US")}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
         <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
         <fieldset className="payment-methods">
           <legend>How would you like to pay?</legend>
-          <label className={paymentMethod === "usdtbsc" ? "payment-methods__option payment-methods__option--active" : "payment-methods__option"}>
-            <input type="radio" name="payment-method" value="usdtbsc" checked={paymentMethod === "usdtbsc"} onChange={() => setPaymentMethod("usdtbsc")} />
-            <span><strong>USDT on BNB Smart Chain</strong><small>BSC network · Suggested</small></span>
-          </label>
-          <label className={paymentMethod === "any" ? "payment-methods__option payment-methods__option--active" : "payment-methods__option"}>
-            <input type="radio" name="payment-method" value="any" checked={paymentMethod === "any"} onChange={() => setPaymentMethod("any")} />
-            <span><strong>Other cryptocurrency</strong><small>Choose a supported coin at payment</small></span>
-          </label>
+          {paymentMethods.map((method) => (
+            <label key={method.id} className={`payment-methods__option ${paymentMethod === method.id ? "payment-methods__option--active" : ""}`}>
+              <input disabled={state === "loading"} type="radio" name="payment-method" value={method.id} checked={paymentMethod === method.id} onChange={() => { setPaymentMethod(method.id); setState("idle"); setMessage(""); }} />
+              <span><strong>{method.label}</strong><small>{method.network}</small></span>
+            </label>
+          ))}
         </fieldset>
-        {paymentMethod === "usdtbsc" && <p className="checkout-note">Send USDT on the BNB Smart Chain network only. Other networks cannot be used for this option.</p>}
+        <p className="checkout-note">{paymentMethods.find((method) => method.id === paymentMethod)?.note}</p>
+        <div aria-live="polite">
+          {checkingPayment && <p className="checkout-note">Checking payment availability…</p>}
+          {!checkingPayment && paymentMinimum?.error && (
+            <div className="form-message form-message--error" role="alert">
+              <p>{paymentMinimum.error}</p>
+              <button type="button" className="button button--cream" onClick={() => { setPaymentMinimum(null); setMinimumRefresh((value) => value + 1); }}>Check again</button>
+            </div>
+          )}
+          {!checkingPayment && !paymentMinimum?.error && belowPaymentMinimum && (
+            <div className="form-message form-message--error">
+              <p>This payment method currently requires an order of at least ${requiredMinimum.toFixed(2)}.</p>
+              {offer.customComments ? <p>Add at least {requiredQuantity.toLocaleString("en-US")} comments or choose another payment method.</p> : Number(calculateOfferPrice(service, requiredQuantity, offer).toFixed(2)) >= requiredMinimum ? (
+                <button type="button" className="button button--cream" onClick={() => { setQuantity(requiredQuantity); setState("idle"); setMessage(""); }}>Choose {requiredQuantity.toLocaleString("en-US")} {service.metric} — ${calculateOfferPrice(service, requiredQuantity, offer).toFixed(2)}</button>
+              ) : <p>Choose another payment method or package.</p>}
+            </div>
+          )}
+        </div>
         <p className="checkout-note">No account or password needed. We cover provider processing fees; your wallet may charge a network fee to send crypto.</p>
         <label className="checkout-consent">
           <input type="checkbox" required />
           <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>
         </label>
-        <button className="button button--coral button--wide" type="submit" disabled={state === "loading"}>
-          {state === "loading" ? <><LoaderCircle className="spin" /> Opening payment</> : <>Pay securely <ArrowRight /></>}
+        <button className="button button--coral button--wide" type="submit" disabled={state === "loading" || checkingPayment || Boolean(paymentMinimum?.error) || belowPaymentMinimum}>
+          {state === "loading" ? <><LoaderCircle className="spin" /> Preparing payment</> : checkingPayment ? <>Checking payment…</> : <>Pay securely <ArrowRight /></>}
         </button>
         <p className="secure-note"><LockKeyhole aria-hidden="true" /> Encrypted and private. No password required.</p>
         {message && <div className={`form-message form-message--${state}`} role="status">{state === "success" && <CheckCircle2 />} {message}</div>}

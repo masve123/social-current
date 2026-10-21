@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
   }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return NextResponse.json({ error: "Invalid payment update." }, { status: 400 });
+  }
 
   if (!verifyNowPaymentsSignature(payload, request.headers.get("x-nowpayments-sig"))) {
     return NextResponse.json({ error: "Invalid signature." }, { status: 401 });

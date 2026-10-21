@@ -20,24 +20,33 @@ export function PaymentStatus({ order }: { order: string }) {
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     async function refresh() {
       try {
         const response = await fetch(`/api/order?order=${encodeURIComponent(order)}`, { cache: "no-store" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "We could not load this order.");
-        if (!cancelled) setResult(data);
-        const complete = ["submitted", "completed", "partial", "manual_review"].includes(data.fulfillment_status);
-        if (!cancelled && !complete && attempts++ < 30) window.setTimeout(refresh, 3000);
+        if (!cancelled) { setResult(data); setError(""); }
+        const complete = ["submitted", "completed", "partial", "manual_review"].includes(data.fulfillment_status)
+          || ["invoice_failed", "failed", "expired", "refunded"].includes(data.payment_status);
+        if (!cancelled && !complete && attempts++ < 30) timer = setTimeout(refresh, 3000);
       } catch (caught) {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : "We could not load this order.");
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : "We could not load this order.");
+          if (attempts++ < 30) timer = setTimeout(refresh, 3000);
+        }
       }
     }
     refresh();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [order]);
 
   const paid = result && ["confirmed", "sending", "finished"].includes(result.payment_status || "");
-  const heading = result?.payment_status === "refunded" ? "Payment refunded" : paid ? "Payment confirmed" : "Confirming your payment";
+  const heading = result?.payment_status === "refunded" ? "Payment refunded"
+    : ["invoice_failed", "failed", "expired"].includes(result?.payment_status || "") ? "Payment was not completed"
+    : result?.payment_status === "partially_paid" ? "Payment is incomplete"
+    : result?.payment_status === "amount_mismatch" || result?.fulfillment_status === "manual_review" ? "Your order is being reviewed"
+    : paid ? "Payment confirmed" : "Waiting for payment";
   return (
     <div className="payment-result">
       {!result && !error && <LoaderCircle className="spin" aria-label="Checking payment" />}

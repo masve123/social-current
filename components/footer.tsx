@@ -38,6 +38,7 @@ export function Footer() {
           <h2>Support</h2>
           <Link href="/contact">Ask for help</Link>
           <Link href="/track">Track order</Link>
+          <Link href="/how-to-pay">How to pay with crypto</Link>
           <Link href="/refund-policy">Refund policy</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

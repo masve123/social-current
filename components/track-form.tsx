@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { checkoutDraftKey, parseCheckoutDraft } from "@/lib/checkout-draft";
 import { RefreshCcw, Search, XCircle } from "lucide-react";
 
 type TrackResult = Record<string, string | boolean>;
@@ -13,9 +14,16 @@ export function TrackForm({ initialOrder = "" }: { initialOrder?: string }) {
   const [working, setWorking] = useState(false);
 
   useEffect(() => {
-    if (!initialOrder) return;
+    let lookup=initialOrder;
+    if(!lookup) {
+      try {lookup=parseCheckoutDraft(sessionStorage.getItem(checkoutDraftKey))?.order || "";} catch {}
+      if(!/^SC-\d{6}-[A-F0-9]{16}$/.test(lookup)) return;
+      // Restore the current tab's order reference after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOrder(lookup);
+    }
     const controller = new AbortController();
-    fetch(`/api/order?order=${encodeURIComponent(initialOrder)}`, { signal: controller.signal, cache: "no-store" })
+    fetch(`/api/order?order=${encodeURIComponent(lookup)}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Unable to find that order.");

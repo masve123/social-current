@@ -467,3 +467,23 @@ input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea {
 .checkout-funnel table { width: 100%; text-align: left; border-collapse: collapse; font-size: 13px; }
 .checkout-funnel th, .checkout-funnel td { padding: 10px; border-bottom: 1px solid #ddd; }
 .payment-result .button + .button { margin-top: 12px; }
+
+.crypto-help { margin: 16px 0; border: 1px solid #696b61; padding: 12px 14px; border-radius: 10px; color: #eeeede; font-size: 13px; }
+.crypto-help summary { cursor: pointer; font-weight: 700; }
+.crypto-help ol { padding-left: 20px; margin: 12px 0; }
+.crypto-help li { margin: 8px 0; line-height: 1.6; }
+.crypto-help a, .picker .checkout-note a { text-decoration: underline; text-underline-offset: 3px; }
+.payment-guide { padding-bottom: 80px; }
+.payment-guide > section, .payment-guide__new { margin-bottom: 36px; }
+.payment-guide h2 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(28px, 4vw, 38px); line-height: 1.2; }
+.payment-guide h3 { font-size: 18px; line-height: 1.4; margin: 0 0 8px; }
+.payment-guide p, .payment-guide li { font-size: 15px; line-height: 1.8; }
+.payment-guide a:not(.button) { text-decoration: underline; text-underline-offset: 3px; }
+.payment-guide__steps { padding-left: 24px; }
+.payment-guide__steps > li { padding-left: 6px; margin: 24px 0; }
+.payment-guide__new, .payment-guide__network { padding: 22px; background: #fffdf5; border: 1px solid #d7d6ca; border-radius: 12px; }
+.payment-guide details summary { cursor: pointer; font-weight: 700; padding: 12px 0; }
+.payment-guide details:not(.payment-guide__new) { border-bottom: 1px solid #d7d6ca; padding: 10px 0; }
+.payment-guide__networks { display: flex; gap: 14px; flex-wrap: wrap; margin: 18px 0; font-size: 14px; }
+.payment-guide__network { scroll-margin-top: 110px; margin: 16px 0; }
+.payment-guide__security { padding: 18px; border-left: 4px solid var(--coral); }

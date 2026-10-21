@@ -11,12 +11,12 @@ export function usePaymentMinimum(currency: PaymentCurrency, refresh = 0) {
     let active = true;
     let cached = requests.get(currency);
     if (!cached || cached.expires < Date.now() || refresh > 0) {
-      const promise = fetch(`/api/payments/minimum?currency=${currency}`, {cache:"no-store"})
+      const promise = fetch(`/api/payments/minimum?currency=${currency}`, {cache:"no-store",signal:AbortSignal.timeout(15_000)})
         .then(async response => {
           const data = await response.json();
           if (!response.ok || !Number.isFinite(data.minimum_usd) || data.minimum_usd <= 0) throw new Error(data.error || "Payment availability could not be checked.");
           return {currency, minimum:data.minimum_usd} as Minimum;
-        }).catch(error => ({currency,error:error instanceof Error ? error.message : "Payment availability could not be checked."}));
+        }).catch(error => ({currency,error:error instanceof Error && error.name !== "TimeoutError" ? error.message : "Payment availability could not be checked. Check your connection and try again."}));
       cached = {expires:Date.now()+30_000,promise};
       requests.set(currency,cached);
     }

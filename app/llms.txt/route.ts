@@ -19,6 +19,7 @@ ${site.name} provides clearly priced social media growth packages. No password i
 - [YouTube growth](${site.url}/youtube-growth)
 - [Growth notes](${site.url}/blog)
 - [FAQ](${site.url}/faq)
+- [Crypto payment guide](${site.url}/how-to-pay)
 
 ## Services
 ${services.map((service) => `- [${service.title}](${site.url}${servicePath(service)}): ${service.description}`).join("\n")}

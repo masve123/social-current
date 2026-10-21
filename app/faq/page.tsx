@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { FaqList } from "@/components/faq-list";
 import { services } from "@/lib/services";
@@ -21,7 +22,7 @@ export default function FaqPage() {
   return (
     <>
       <section className="page-hero page-hero--compact"><div className="shell narrow"><span className="eyebrow">Help center</span><h1>Questions, meet <em>answers.</em></h1><p>Plain-language guidance on ordering, delivery, account access, and support.</p></div></section>
-      <section className="section shell faq-page"><FaqList items={allFaq} /></section>
+      <section className="section shell faq-page"><p>New to crypto? <Link href="/how-to-pay">Read the step-by-step payment guide</Link> before opening payment.</p><FaqList items={allFaq} /></section>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }} />
     </>
   );

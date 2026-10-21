@@ -1,5 +1,6 @@
 "use client";
 
+import { CryptoPaymentHelp } from "@/components/crypto-payment-help";
 import { ArrowRight, CheckCircle2, ExternalLink, LoaderCircle, LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -15,7 +16,7 @@ import { checkoutSessionId, trackCheckout } from "@/lib/checkout-telemetry";
 
 type ProfileCheck = { status: "verified" | "not_found" | "private" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
-export function OrderForm({ initialService, initialOffer, initialQuantity, initialCurrency, initialLink = "", initialComments = "", resumeOrder, instagramLookupEnabled = false }: { initialService?: string; initialOffer?: string; initialQuantity?: number; initialCurrency?: string; initialLink?: string; initialComments?: string; resumeOrder?: string; instagramLookupEnabled?: boolean }) {
+export function OrderForm({ initialService, initialOffer, initialQuantity, initialCurrency, initialLink = "", initialComments = "", resumeOrder, emailUpdatesEnabled = false, instagramLookupEnabled = false }: { initialService?: string; initialOffer?: string; initialQuantity?: number; initialCurrency?: string; initialLink?: string; initialComments?: string; resumeOrder?: string; emailUpdatesEnabled?: boolean; instagramLookupEnabled?: boolean }) {
   const selectionKey = JSON.stringify([initialService,initialOffer,initialQuantity,initialCurrency,resumeOrder]);
   const fallback = services[0];
   const initial = services.find((item) => item.slug === initialService) || fallback;
@@ -35,7 +36,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
   const [quantityInput, setQuantity] = useState(
     initialQuantity && initialQuantity >= firstOfferMin && initialQuantity <= firstOfferMax && initialQuantity % firstOfferStep === 0
       ? initialQuantity
-      : normalizeCheckoutQuantity(initial, firstOffer, initial.baseQuantity),
+      : normalizeCheckoutQuantity(initial, firstOffer, 0),
   );
   const [editingPackage, setEditingPackage] = useState(!hasSelectedPackage);
   const [commentsText, setCommentsText] = useState(initialComments);
@@ -48,6 +49,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
   const paymentMinimum = paymentQuote && {...paymentQuote, minimum: Math.max(paymentQuote.minimum || 0, serverMinimum?.currency === paymentMethod ? serverMinimum.minimum : 0) || undefined};
   const [draftReady, setDraftReady] = useState(false);
   const [draftNotice, setDraftNotice] = useState("");
+  const [earlierOrder,setEarlierOrder] = useState<string | undefined>();
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const submitting = useRef(false);
@@ -57,7 +59,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
   const checkingPayment = paymentMinimum?.currency !== paymentMethod;
   const requiredMinimum = Math.max(minimumCheckoutUsd, paymentMinimum?.currency === paymentMethod ? paymentMinimum.minimum ?? minimumCheckoutUsd : minimumCheckoutUsd);
   const requiredQuantity = getCheckoutMinimumQuantity(service, offer, requiredMinimum);
-  const quantity = hasSelectedPackage ? quantityInput : normalizeCheckoutQuantity(service,offer,quantityInput,requiredMinimum);
+  const quantity = initialQuantity !== undefined ? quantityInput : normalizeCheckoutQuantity(service,offer,quantityInput,requiredMinimum);
   const pricedQuantity = offer.customComments ? comments.length : quantity;
   const price = calculateOfferPrice(service, pricedQuantity, offer);
   const belowPaymentMinimum = Number(price.toFixed(2)) < requiredMinimum;
@@ -74,6 +76,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
     // Restore once after hydration; browser-only storage is unavailable on the server.
     if(draft) {
       /* eslint-disable react-hooks/set-state-in-effect */
+      if(draft.order && /^SC-\d{6}-[A-F0-9]{16}$/.test(draft.order)) setEarlierOrder(draft.order);
       const matchesResume = !resumeOrder || draft.order === resumeOrder;
       if(matchesResume) setEmail(draft.email);
       const sameSelection = draft.selectionKey === selectionKey;
@@ -173,6 +176,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
       const response = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(65_000),
         body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, paymentMethod, resumeOrder, checkoutSession: navigator.doNotTrack === "1" ? undefined : checkoutSessionId(), acceptedTerms: true }),
       });
       const data = await response.json();
@@ -190,14 +194,14 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
       trackCheckout({event:"checkout_client_failed",serviceSlug,offerId:offer.id,currency:paymentMethod});
       submitting.current = false;
       setState("error");
-      setMessage(error instanceof Error ? error.message : "We could not place the order.");
+      setMessage(error instanceof Error && error.name === "TimeoutError" ? "Payment setup took too long. Your details are saved; check your connection and try again. If you already sent funds, check order tracking first." : error instanceof Error ? error.message : "We could not place the order.");
     }
   }
 
   return (
     <form className="checkout" onSubmit={submit} onInvalid={()=>trackCheckout({event:"checkout_validation_failed",serviceSlug,offerId:offer.id})}>
       <div className="checkout__main">
-        {draftNotice && <p className="checkout-draft-notice" role="status">{draftNotice}</p>}
+        {draftNotice && <p className="checkout-draft-notice" role="status">{draftNotice}{earlierOrder && <> <Link href={`/track?order=${encodeURIComponent(earlierOrder)}`}>Check your earlier payment before paying again</Link>.</>}</p>}
         {hasSelectedPackage && (
           <div className="selected-package">
             <div className="selected-package__top"><span className="eyebrow">Your selection</span><button type="button" onClick={() => setEditingPackage((current) => !current)} aria-expanded={editingPackage}>{editingPackage ? "Done editing" : "Change package"}</button></div>
@@ -297,7 +301,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
               </div>
             )}
           </div>
-          <label><span>Email for order updates</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
+          <label><span>{emailUpdatesEnabled ? "Email for order updates" : "Email for order support"}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
         </div>
       </div>
       <aside className="order-summary">
@@ -309,7 +313,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
         <div className="summary-total"><span>Total</span><strong>{checkingPayment ? "Checking…" : `$${price.toFixed(2)}`}</strong></div>
         {link.trim() && <div className="summary-row"><span>Deliver to</span><strong className="summary-target">{parsedProfile ? `@${parsedProfile.handle}` : link}</strong></div>}
-        <p className="checkout-note"><strong>Requires an existing crypto wallet.</strong> Card payments are not available yet.</p>
+        <p className="checkout-note"><strong>Pay from your crypto wallet or exchange.</strong> Have your funds ready before continuing.</p>
         <fieldset className="payment-methods">
           <legend>How would you like to pay?</legend>
           {paymentMethods.map((method) => (
@@ -320,6 +324,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
           ))}
         </fieldset>
         <p className="checkout-note">{paymentMethods.find((method) => method.id === paymentMethod)?.note}</p>
+        <CryptoPaymentHelp currency={paymentMethod} />
         <div aria-live="polite">
           {checkingPayment && <p className="checkout-note">Checking payment availability…</p>}
           {!checkingPayment && paymentMinimum?.error && (
@@ -343,11 +348,13 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, initi
           <span>I agree to the <Link href="/terms" target="_blank">terms</Link> and <Link href="/refund-policy" target="_blank">refund policy</Link>.</span>
         </label>
         <button className="button button--coral button--wide" type="submit" disabled={state === "loading" || checkingPayment || Boolean(paymentMinimum?.error) || belowPaymentMinimum}>
-          {state === "loading" ? <><LoaderCircle className="spin" /> Preparing payment</> : checkingPayment ? <>Checking payment…</> : <>Pay securely <ArrowRight /></>}
+          {state === "loading" ? <><LoaderCircle className="spin" /> Preparing payment</> : checkingPayment ? <>Checking payment…</> : <>Continue to payment <ArrowRight /></>}
         </button>
+        <p className="checkout-note">Nothing is charged here. You’ll review the address, amount and timer on NOWPayments before sending.</p>
         <p className="secure-note"><LockKeyhole aria-hidden="true" /> Encrypted and private. No password required.</p>
         {message && <div className={`form-message form-message--${state}`} role="status">{state === "success" && <CheckCircle2 />} {message}</div>}
-        <p className="checkout-note">You’ll see the wallet address, exact amount and payment deadline on the next screen. Send on the selected network before the timer expires. If you’ve already sent funds, check your order status before trying again.</p>
+        {!emailUpdatesEnabled && <p className="checkout-note">Keep your order number for updates in order tracking.</p>}
+        <p className="checkout-note">Already sent funds? Check your order status before starting another payment.</p>
         <p className="checkout-note">Payment confirmation comes first. Delivery starts afterwards; you can follow both in order tracking.</p>
       </aside>
     </form>

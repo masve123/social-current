@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, Clock3, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { DiscoverySurvey } from "@/components/discovery-survey";
 import { trackCheckout } from "@/lib/checkout-telemetry";
 
 type StatusResult = {
@@ -71,6 +72,7 @@ export function PaymentStatus({ order, recordReturn = false }: { order: string; 
           {paid && <p>Your payment is confirmed. Delivery progress is shown separately in order tracking.</p>}
           <Link className="button button--ink" href={`/track?order=${encodeURIComponent(order)}`}>Track this order</Link>
           <Link className="payment-result__support" href={`/contact?order=${encodeURIComponent(order)}`}>Need help with this order?</Link>
+          {paid && <DiscoverySurvey key={result.order} order={result.order} />}
         </>
       )}
     </div>

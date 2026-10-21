@@ -1,5 +1,6 @@
 "use client";
 
+import { DiscoverySurvey } from "@/components/discovery-survey";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { checkoutDraftKey, parseCheckoutDraft } from "@/lib/checkout-draft";
@@ -93,6 +94,7 @@ export function TrackForm({ initialOrder = "" }: { initialOrder?: string }) {
             </div>
           )}
           <Link className="track-card__support" href={`/contact?order=${encodeURIComponent(String(result.order || order))}`}>Ask for help with this order</Link>
+          {["confirmed", "sending", "finished"].includes(String(result.payment_status)) && <DiscoverySurvey key={String(result.order)} order={String(result.order)} />}
         </>
       )}
     </div>

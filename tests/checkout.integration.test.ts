@@ -13,6 +13,8 @@ import { POST as orderAction } from "../app/api/order/action/route";
 import { POST, GET as lookupOrder } from "../app/api/order/route";
 import { POST as browserEvent } from "../app/api/checkout/events/route";
 import { saveCheckoutEvent, checkoutFunnel } from "../lib/checkout-event-store";
+import { POST as answerDiscovery, GET as getDiscovery } from "../app/api/order/discovery/route";
+import { discoveryReport } from "../lib/discovery-survey-store";
 import { database, ensureDatabase } from "../lib/db";
 import { attachPaymentInvoice, createStoredOrder, findStoredOrder, recordPaymentEvent } from "../lib/order-store";
 import { refreshOrderPayment } from "../lib/payment-reconciliation";
@@ -36,9 +38,9 @@ const integration = connection ? test : test.skip;
 const checkout = { serviceSlug: "instagram-followers", offerId: "usa-female", quantity: 200, link: "@instagram", email: "checkout-test@example.com", acceptedTerms: true, paymentMethod: "usdtbsc" };
 const request = (body: unknown) => new NextRequest("https://example.com/api/order", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
 
-before(async () => { if (connection) {await ensureDatabase(); await saveCheckoutEvent({event:"checkout_opened"});} });
+before(async () => { if (connection) {await ensureDatabase(); await discoveryReport(); await saveCheckoutEvent({event:"checkout_opened"});} });
 beforeEach(async () => {
-  if (connection) await database()`TRUNCATE social_current_checkout_events, social_current_payment_events, social_current_orders, social_current_checkout_attempts`;
+  if (connection) await database()`TRUNCATE social_current_discovery_answers, social_current_checkout_events, social_current_payment_events, social_current_orders, social_current_checkout_attempts`;
 });
 afterEach(() => mock.restoreAll());
 after(async () => { if (connection) await database().end(); });
@@ -446,4 +448,80 @@ integration("restart permits a verified zero-paid expired payment and fails clos
   mock.restoreAll();
   mock.method(globalThis,"fetch",async()=>{throw new Error("offline");});
   await assert.rejects(()=>verifyCheckoutRestart({...order,payment_status:"expired"}),/could not be reached/);
+});
+
+const surveyRequest = (body: unknown, origin = "https://example.com") => new NextRequest("https://example.com/api/order/discovery", {
+  method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
+});
+async function surveyOrder(status: string) {
+  const id = "SC-261021-ABCDEF0123456789";
+  await createStoredOrder({ publicId: id, email: "survey@example.com", serviceSlug: "instagram-followers", offerId: "usa-female", quantity: 200, targetUrl: "https://www.instagram.com/instagram/", comments: [], amountUsd: 15.59 });
+  await database()`UPDATE social_current_orders SET payment_status=${status} WHERE public_id=${id}`;
+  return id;
+}
+integration("discovery rejects unpaid, incomplete, refunded, and unknown orders without changing them", async () => {
+  const id = await surveyOrder("waiting");
+  for (const status of ["creating", "waiting", "confirming", "partially_paid", "amount_mismatch", "expired", "failed", "refunded"]) {
+    await database()`UPDATE social_current_orders SET payment_status=${status} WHERE public_id=${id}`;
+    const availability = await getDiscovery(new NextRequest(`https://example.com/api/order/discovery?order=${id}`));
+    assert.equal((await availability.json()).available, false);
+    assert.equal((await answerDiscovery(surveyRequest({ order: id, source: "instagram" }))).status, 409);
+    assert.equal((await findStoredOrder(id))?.payment_status, status);
+  }
+  assert.equal((await answerDiscovery(surveyRequest({ order: "SC-261021-0000000000000000", source: "google" }))).status, 409);
+  assert.equal((await discoveryReport()).counts.length, 0);
+});
+for (const status of ["confirmed", "sending", "finished"]) {
+  integration(`discovery accepts ${status} payment once without changing any order fields or contacting providers`, async () => {
+    mock.method(globalThis, "fetch", () => { throw new Error("Survey must not contact a provider"); });
+    const id = await surveyOrder(status);
+    const before = await findStoredOrder(id);
+    assert.equal((await (await getDiscovery(new NextRequest(`https://example.com/api/order/discovery?order=${id}`))).json()).available, true);
+    const responses = await Promise.all([answerDiscovery(surveyRequest({ order: id, source: "instagram" })), answerDiscovery(surveyRequest({ order: id, source: "google" }))]);
+    assert.ok(responses.every(response => response.status === 204));
+    assert.deepEqual(await findStoredOrder(id), before);
+    assert.equal((await (await getDiscovery(new NextRequest(`https://example.com/api/order/discovery?order=${id}`))).json()).available, false);
+    const report = await discoveryReport();
+    assert.equal(report.counts.length, 1);
+    assert.equal(report.counts[0].answers, 1);
+    assert.equal((await answerDiscovery(surveyRequest({ order: id, source: "other", other: "Trying to overwrite" }))).status, 204);
+    assert.deepEqual((await discoveryReport()).counts, report.counts);
+  });
+}
+integration("discovery validates origin and input and keeps Other text in the protected report", async () => {
+  const id = await surveyOrder("finished");
+  assert.equal((await answerDiscovery(surveyRequest({ order: id, source: "google" }, "https://evil.example"))).status, 403);
+  for (const body of [null, [], { order: id, source: ["google", "instagram"] }, { order: id, source: "other", other: " " }, { order: id, source: "other", other: "x".repeat(201) }, { order: id, source: "google", payment_status: "finished" }]) {
+    assert.equal((await answerDiscovery(surveyRequest(body))).status, 400);
+  }
+  assert.equal((await answerDiscovery(surveyRequest({ order: id, source: "other", other: "  A newsletter  " }))).status, 204);
+  assert.equal((await discoveryReport()).other[0].other_text, "A newsletter");
+  const publicResult = await (await getDiscovery(new NextRequest(`https://example.com/api/order/discovery?order=${id}`))).json();
+  assert.deepEqual(publicResult, { available: false });
+});
+
+integration("a survey storage outage cannot block a paid order or its tracking", async () => {
+  const id = await surveyOrder("finished");
+  await database()`UPDATE social_current_orders SET fulfillment_status='completed' WHERE public_id=${id}`;
+  const before = await findStoredOrder(id);
+  await database()`ALTER TABLE social_current_discovery_answers RENAME TO social_current_discovery_answers_outage`;
+  try {
+    assert.equal((await answerDiscovery(surveyRequest({ order: id, source: "google" }))).status, 503);
+    assert.equal((await getDiscovery(new NextRequest(`https://example.com/api/order/discovery?order=${id}`))).status, 503);
+    const tracking = await lookupOrder(new NextRequest(`https://example.com/api/order?order=${id}`));
+    assert.equal(tracking.status, 200);
+    assert.equal((await tracking.json()).payment_status, "finished");
+    assert.deepEqual(await findStoredOrder(id), before);
+  } finally {
+    await database()`ALTER TABLE social_current_discovery_answers_outage RENAME TO social_current_discovery_answers`;
+  }
+});
+
+integration("discovery accepts same-host browser requests when Next normalizes the internal URL", async () => {
+  const id = await surveyOrder("finished");
+  const response = await answerDiscovery(new NextRequest("http://localhost:3010/api/order/discovery", {
+    method: "POST", headers: { host: "127.0.0.1:3010", origin: "http://127.0.0.1:3010", "Content-Type": "application/json" },
+    body: JSON.stringify({ order: id, source: "tiktok" }),
+  }));
+  assert.equal(response.status, 204);
 });

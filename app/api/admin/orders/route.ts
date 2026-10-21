@@ -1,3 +1,4 @@
+import { discoveryReport } from "@/lib/discovery-survey-store";
 import { checkoutFunnel } from "@/lib/checkout-event-store";
 import { timingSafeEqual } from "node:crypto";
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
   await recoverStaleOrders();
   const orders = await listActionableOrders(Number(request.nextUrl.searchParams.get("limit")) || 50);
   const supplierBalance = await getPanelBalance("smmworld").catch(() => null);
-  return NextResponse.json({ orders, supplier_balance: supplierBalance, checkout_funnel: await checkoutFunnel().catch(()=>null) });
+  return NextResponse.json({ orders, supplier_balance: supplierBalance, checkout_funnel: await checkoutFunnel().catch(()=>null), discovery: await discoveryReport().catch(()=>null) });
 }
 
 export async function POST(request: NextRequest) {

@@ -501,3 +501,16 @@ input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea {
 .trust-wallet-guide__selected { padding: 10px; background: #e0e8d3; border-radius: 8px; }
 .trust-wallet-guide .button { font-size: 13px; padding: 10px 12px; }
 .trust-wallet-guide__sources { font-size: 12px; }
+
+.discovery-survey { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); text-align: left; }
+.discovery-survey h3 { margin: 0 0 8px; font-size: 20px; }
+.discovery-survey p { font-size: 13px; line-height: 1.6; color: var(--muted); }
+.discovery-survey__choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.discovery-survey__choices button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--ink); border-radius: 999px; background: var(--white); color: var(--ink); cursor: pointer; font: inherit; font-size: 14px; }
+.discovery-survey__choices button:hover, .discovery-survey__choices button[aria-pressed="true"] { background: var(--ink); color: var(--white); }
+.discovery-survey button:focus-visible { outline: 3px solid var(--coral); outline-offset: 3px; }
+.discovery-survey button:disabled { opacity: .6; cursor: default; }
+.discovery-survey label { display: block; font-size: 13px; font-weight: 700; }
+.discovery-survey input { display: block; width: 100%; margin-top: 8px; }
+.discovery-survey__skip { display: block; margin-top: 16px; min-height: 44px; padding: 8px 0; border: 0; background: transparent; color: var(--ink); text-decoration: underline; cursor: pointer; font: inherit; font-size: 13px; }
+.discovery-survey__thanks { margin-top: 24px; font-size: 14px; }

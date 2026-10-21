@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { ArrowUpRight, Eye, Heart, Instagram, MessageCircle, Music2, UsersRound, Youtube } from "lucide-react";
 import { useState } from "react";
-import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
-import { calculatePrice, services } from "@/lib/services";
+import { PayablePrice } from "@/components/payable-price";
+import { services } from "@/lib/services";
 import { servicePath } from "@/lib/service-path";
 
 const platforms = [
@@ -39,18 +39,17 @@ export function HeroPicker() {
           const serviceMetric = platform === "YouTube" && metric === "followers" ? "subscribers" : metric;
           const service = services.find((item) => item.platform === platform && item.metric === serviceMetric);
           if (!service) return null;
-          const minimumQuantity = getStandardCheckoutMinimumQuantity(service);
           return (
             <Link className="hero-picker__goal" href={servicePath(service)} key={metric} aria-label={`Explore ${service.title}`}>
               <span className="hero-picker__goal-icon"><Icon aria-hidden="true" /></span>
               <strong>{platform === "YouTube" && metric === "followers" ? "Subscribers" : label}</strong>
               <small>{hint}</small>
-              <span className="hero-picker__goal-bottom"><span>From ${calculatePrice(service, minimumQuantity).toFixed(2)}</span><ArrowUpRight aria-hidden="true" /></span>
+              <span className="hero-picker__goal-bottom"><span>From <PayablePrice service={service} /></span><ArrowUpRight aria-hidden="true" /></span>
             </Link>
           );
         })}
       </div>
-      <div className="hero-picker__foot"><span>No password needed</span><span>Choose your amount on the next page</span><span>Track your order</span></div>
+      <div className="hero-picker__foot"><span>No password needed</span><span>Crypto wallet required · prices use USDT on BSC</span><span>Track your order</span></div>
     </div>
   );
 }

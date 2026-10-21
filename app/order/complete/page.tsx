@@ -15,7 +15,7 @@ export default async function OrderCompletePage({ searchParams }: { searchParams
       <div className="shell narrow">
         <span className="eyebrow">Payment status</span>
         <h1>We’re confirming your <em>order.</em></h1>
-        {order ? <PaymentStatus order={order} /> : (
+        {order ? <PaymentStatus order={order} recordReturn /> : (
           <div className="payment-result"><p>Your order number is missing.</p><Link className="button button--ink" href="/track">Open order tracking</Link></div>
         )}
       </div>

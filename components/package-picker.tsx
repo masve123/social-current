@@ -2,16 +2,24 @@
 
 import Link from "next/link";
 import { Check, Clock3, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type Service } from "@/lib/services";
 import { getCheckoutMinimumQuantity, normalizeCheckoutQuantity } from "@/lib/checkout-pricing";
 import { calculateOfferPrice, getServiceOffers } from "@/lib/smm-offers";
 
+import { usePaymentMinimum } from "@/lib/use-payment-minimum";
+import { paymentMethods, type PaymentCurrency } from "@/lib/payment-methods";
+import { trackCheckout } from "@/lib/checkout-telemetry";
+
 export function PackagePicker({ service }: { service: Service }) {
+  const [currency, setCurrency] = useState<PaymentCurrency>("usdtbsc");
+  const [refresh,setRefresh] = useState(0);
+  const quote = usePaymentMinimum(currency,refresh);
+  const minimumUsd = Math.max(4.99,quote?.minimum ?? 4.99);
   const offers = getServiceOffers(service);
   const [offerId, setOfferId] = useState(offers[0].id);
   const offer = offers.find((item) => item.id === offerId) || offers[0];
-  const minQuantity = getCheckoutMinimumQuantity(service, offer);
+  const minQuantity = getCheckoutMinimumQuantity(service, offer, minimumUsd);
   const maxQuantity = offer.max ?? service.max;
   const step = offer.step ?? service.step;
   const presets = (() => {
@@ -19,27 +27,41 @@ export function PackagePicker({ service }: { service: Service }) {
     return [...new Set(values.map((value) => Math.max(minQuantity, Math.min(maxQuantity, Math.round(value / step) * step))))];
   })();
   const [quantity, setQuantity] = useState(Math.max(service.baseQuantity, minQuantity));
-  const selectedQuantity = normalizeCheckoutQuantity(service, offer, quantity);
+  const selectedQuantity = normalizeCheckoutQuantity(service, offer, quantity, minimumUsd);
   const price = calculateOfferPrice(service, offer.customComments ? minQuantity : selectedQuantity, offer);
-  const checkoutParams = new URLSearchParams({ service: service.slug, offer: offer.id, quantity: String(selectedQuantity) });
+  const checkoutParams = new URLSearchParams({ service: service.slug, offer: offer.id, quantity: String(selectedQuantity), currency });
+  const available = Boolean(quote?.minimum) && Number(price.toFixed(2)) >= minimumUsd;
+  useEffect(() => {
+    if (!available) return;
+    const timer = setTimeout(() => trackCheckout({event:"package_selected",serviceSlug:service.slug,offerId:offer.id,quantity:selectedQuantity,currency}),400);
+    return () => clearTimeout(timer);
+  },[service.slug,offer.id,selectedQuantity,currency,available]);
 
   return (
-    <aside className="picker" aria-label={`${service.shortTitle} package picker`}>
+    <aside id="packages" className="picker" aria-label={`${service.shortTitle} package picker`}>
       <div className="picker__header">
         <span>{service.metric === "followers" ? "Build your follower package" : "Choose your amount"}</span>
+      </div>
+      <div className="picker__tier">
+        <label htmlFor="package-payment">Pay with an existing crypto wallet</label>
+        <select id="package-payment" value={currency} onChange={event=>setCurrency(event.target.value as PaymentCurrency)}>
+          {paymentMethods.map(method=><option key={method.id} value={method.id}>{method.label}</option>)}
+        </select>
+        {quote?.error && <button type="button" onClick={()=>setRefresh(value=>value+1)}>Check payment again</button>}
+        <p>Crypto wallet required. {quote?.minimum ? `Current minimum: $${quote.minimum.toFixed(2)}. Quantities below this are excluded.` : quote?.error || "Checking payment availability…"}</p>
       </div>
       {service.metric === "followers" && offers.length > 1 && (
         <fieldset className="picker__follower-types">
           <legend>Choose your follower type</legend>
           <div className="picker__follower-grid">
             {offers.map((item) => {
-              const itemQuantity = normalizeCheckoutQuantity(service, item, selectedQuantity);
+              const itemQuantity = normalizeCheckoutQuantity(service, item, selectedQuantity, minimumUsd);
               return (
-                <button type="button" key={item.id} className={offer.id === item.id ? "active" : ""} aria-pressed={offer.id === item.id} onClick={() => { setQuantity(normalizeCheckoutQuantity(service, item, selectedQuantity)); setOfferId(item.id); }}>
+                <button type="button" key={item.id} className={offer.id === item.id ? "active" : ""} aria-pressed={offer.id === item.id} onClick={() => { setQuantity(normalizeCheckoutQuantity(service, item, selectedQuantity, minimumUsd)); setOfferId(item.id); }}>
                   <strong>{item.label}</strong>
                   <small>{item.audience} · {item.protection}</small>
                   <small>For {itemQuantity.toLocaleString("en-US")} followers</small>
-                  <span>${calculateOfferPrice(service, itemQuantity, item).toFixed(2)}</span>
+                  <span>{quote?.minimum && Number(calculateOfferPrice(service,itemQuantity,item).toFixed(2)) >= minimumUsd ? `$${calculateOfferPrice(service,itemQuantity,item).toFixed(2)}` : quote ? "Unavailable" : "Checking…"}</span>
                 </button>
               );
             })}
@@ -50,7 +72,7 @@ export function PackagePicker({ service }: { service: Service }) {
       {service.metric !== "followers" && offers.length > 1 && (
         <div className="picker__tier">
           <label htmlFor="package-tier">Delivery package</label>
-          <select id="package-tier" value={offer.id} onChange={(event) => { const next = offers.find((item) => item.id === event.target.value)!; setQuantity(normalizeCheckoutQuantity(service, next, selectedQuantity)); setOfferId(next.id); }}>
+          <select id="package-tier" value={offer.id} onChange={(event) => { const next = offers.find((item) => item.id === event.target.value)!; setQuantity(normalizeCheckoutQuantity(service, next, selectedQuantity, minimumUsd)); setOfferId(next.id); }}>
             {offers.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
           </select>
           <p>{offer.description} {offer.protection}.</p>
@@ -89,11 +111,11 @@ export function PackagePicker({ service }: { service: Service }) {
           />
         </>
       )}
-      <div className="picker__total"><span>{offer.customComments ? "Starting at" : "Total"}</span><strong aria-live="polite">${price.toFixed(2)}</strong></div>
+      <div className="picker__total"><span>{offer.customComments ? "Starting at" : "Total"}</span><strong aria-live="polite">{available ? `$${price.toFixed(2)}` : quote ? "Unavailable" : "Checking…"}</strong></div>
       <p className="checkout-note">We cover payment processing fees. Your wallet may charge a fee to send crypto.</p>
-      <Link className="button button--coral button--wide" href={`/order?${checkoutParams.toString()}`}>
+      {available ? <Link className="button button--coral button--wide" href={`/order?${checkoutParams.toString()}`}>
         {offer.customComments ? "Write your comments" : "Continue with this package"}
-      </Link>
+      </Link> : <button className="button button--coral button--wide" disabled>{quote ? "Payment unavailable" : "Checking payment…"}</button>}
       <div className="picker__trust">
         <span><Clock3 aria-hidden="true" /> {service.delivery}</span>
         <span><ShieldCheck aria-hidden="true" /> Secure checkout</span>

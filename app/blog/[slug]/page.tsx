@@ -1,3 +1,4 @@
+import { PayablePrice } from "@/components/payable-price";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -58,7 +59,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
           <div className="article-prose">
             <p className="article-intro">{article.intro}</p>
             {article.sections.map((section) => <section id={toId(section.heading)} key={section.heading}><h2>{section.heading}</h2>{section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}{section.bullets && <ul>{section.bullets.map((bullet) => <li key={bullet}><Check />{bullet}</li>)}</ul>}</section>)}
-            {relatedServices.length > 0 && <section className="related-services"><span className="eyebrow">Related services</span><h2>Support the plan with measured growth</h2>{relatedServices.map((service) => <Link href={servicePath(service)} key={service.slug}><span>{service.shortTitle}</span><strong>From ${service.basePrice.toFixed(2)}</strong><ArrowRight /></Link>)}</section>}
+            {relatedServices.length > 0 && <section className="related-services"><span className="eyebrow">Related services</span><h2>Support the plan with measured growth</h2>{relatedServices.map((service) => <Link href={servicePath(service)} key={service.slug}><span>{service.shortTitle}</span><strong>From (USDT on BSC) <PayablePrice service={service} /></strong><ArrowRight /></Link>)}</section>}
             <div className="article-cta"><h2>Put the plan in motion.</h2><p>Choose a measured package to support your next post or profile campaign.</p><Link className="button button--coral" href="/services">Explore services <ArrowRight /></Link></div>
           </div>
         </div>

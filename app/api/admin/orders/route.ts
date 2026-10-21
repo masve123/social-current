@@ -1,3 +1,4 @@
+import { checkoutFunnel } from "@/lib/checkout-event-store";
 import { timingSafeEqual } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   await recoverStaleOrders();
   const orders = await listActionableOrders(Number(request.nextUrl.searchParams.get("limit")) || 50);
   const supplierBalance = await getPanelBalance("smmworld").catch(() => null);
-  return NextResponse.json({ orders, supplier_balance: supplierBalance });
+  return NextResponse.json({ orders, supplier_balance: supplierBalance, checkout_funnel: await checkoutFunnel().catch(()=>null) });
 }
 
 export async function POST(request: NextRequest) {

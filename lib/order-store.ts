@@ -1,3 +1,4 @@
+import { saveCheckoutEvent } from "@/lib/checkout-event-store";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { database, ensureDatabase } from "@/lib/db";
@@ -131,7 +132,7 @@ export async function recordPaymentEvent(input: {
   await ensureDatabase();
   const sql = database();
   const eventId = createHash("sha256").update(input.rawBody).digest("hex");
-  return sql.begin(async (tx) => {
+  const result = await sql.begin(async (tx) => {
     const [current] = await tx<StoredOrder[]>`
       SELECT * FROM social_current_orders
       WHERE public_id = ${input.publicId} FOR UPDATE
@@ -180,6 +181,11 @@ export async function recordPaymentEvent(input: {
     `;
     return order;
   });
+  if (isPaidPaymentStatus(result.payment_status) || result.payment_status === "expired") {
+    const event = result.payment_status === "expired" ? "payment_expired" : "payment_confirmed";
+    await saveCheckoutEvent({event,eventId:`${event}:${result.public_id}`,order:result.public_id,serviceSlug:result.service_slug,offerId:result.offer_id,quantity:result.quantity});
+  }
+  return result;
 }
 
 export async function claimOrderForFulfillment(publicId: string) {

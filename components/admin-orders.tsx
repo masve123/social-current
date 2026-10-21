@@ -28,6 +28,7 @@ type SupportRequest = {
 };
 
 export function AdminOrders() {
+  const [funnel,setFunnel] = useState<{stages:{event_name:string;events:number;sessions:number;orders:number}[];failures:{error_code:string;events:number}[]} | null>(null);
   const [secret, setSecret] = useState("");
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
@@ -50,6 +51,7 @@ export function AdminOrders() {
       if (!ordersResponse.ok) throw new Error(orderData.error || "Orders could not be loaded.");
       if (!supportResponse.ok) throw new Error(supportData.error || "Support requests could not be loaded.");
       setOrders(orderData.orders);
+      setFunnel(orderData.checkout_funnel || null);
       setBalance(orderData.supplier_balance || null);
       setSupportRequests(supportData.requests);
       setLoaded(true);
@@ -110,6 +112,7 @@ export function AdminOrders() {
       </form>
       {error && <p className="form-message form-message--error">{error}</p>}
       {balance && <p className="admin-balance">SMM World balance <strong>{balance.balance} {balance.currency}</strong></p>}
+      {funnel && <section className="checkout-funnel"><h2>Checkout activity · last 30 days</h2><p>Browser events are best effort. Payment setup and confirmation events come from the server. Counts include repeat attempts and testing; sessions are browser tabs, not verified people.</p><div className="checkout-funnel__table"><table><thead><tr><th>Stage</th><th>Events</th><th>Sessions</th><th>Orders</th></tr></thead><tbody>{funnel.stages.map(stage=><tr key={stage.event_name}><td>{stage.event_name.replaceAll("_"," ")}</td><td>{stage.events}</td><td>{stage.sessions || "—"}</td><td>{stage.orders || "—"}</td></tr>)}</tbody></table></div>{funnel.failures.map(failure=><p key={failure.error_code || "unknown"}>{failure.error_code || "Unknown failure"}: {failure.events}</p>)}</section>}
       {loaded && !loading && orders.length === 0 && !error && <p className="admin-empty">No orders currently need attention.</p>}
       {orders.map((order) => (
         <article className="admin-order" key={order.public_id}>

@@ -5,13 +5,18 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { calculateOfferPrice, getServiceOffer, getServiceOffers } from "@/lib/smm-offers";
 import { getCheckoutMinimumQuantity, minimumCheckoutUsd, normalizeCheckoutQuantity } from "@/lib/checkout-pricing";
-import { paymentMethods, type PaymentCurrency } from "@/lib/payment-methods";
+import { isPaymentCurrency, paymentMethods, type PaymentCurrency } from "@/lib/payment-methods";
 import { services } from "@/lib/services";
 import { isProfileService, parseProfileTarget, parseOrderTarget } from "@/lib/profile-target";
 
+import { usePaymentMinimum } from "@/lib/use-payment-minimum";
+import { checkoutDraftKey, parseCheckoutDraft, persistCheckoutDraft } from "@/lib/checkout-draft";
+import { checkoutSessionId, trackCheckout } from "@/lib/checkout-telemetry";
+
 type ProfileCheck = { status: "verified" | "not_found" | "private" | "unavailable" | "invalid"; url?: string; displayName?: string };
 
-export function OrderForm({ initialService, initialOffer, initialQuantity, instagramLookupEnabled = false }: { initialService?: string; initialOffer?: string; initialQuantity?: number; instagramLookupEnabled?: boolean }) {
+export function OrderForm({ initialService, initialOffer, initialQuantity, initialCurrency, initialLink = "", initialComments = "", resumeOrder, instagramLookupEnabled = false }: { initialService?: string; initialOffer?: string; initialQuantity?: number; initialCurrency?: string; initialLink?: string; initialComments?: string; resumeOrder?: string; instagramLookupEnabled?: boolean }) {
+  const selectionKey = JSON.stringify([initialService,initialOffer,initialQuantity,initialCurrency,resumeOrder]);
   const fallback = services[0];
   const initial = services.find((item) => item.slug === initialService) || fallback;
   const hasSelectedPackage = Boolean(services.find((item) => item.slug === initialService));
@@ -27,50 +32,75 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
   const offerMin = getCheckoutMinimumQuantity(service, offer);
   const offerMax = offer.max ?? service.max;
   const offerStep = offer.step ?? service.step;
-  const [quantity, setQuantity] = useState(
+  const [quantityInput, setQuantity] = useState(
     initialQuantity && initialQuantity >= firstOfferMin && initialQuantity <= firstOfferMax && initialQuantity % firstOfferStep === 0
       ? initialQuantity
       : normalizeCheckoutQuantity(initial, firstOffer, initial.baseQuantity),
   );
   const [editingPackage, setEditingPackage] = useState(!hasSelectedPackage);
-  const [commentsText, setCommentsText] = useState("");
-  const [link, setLink] = useState("");
+  const [commentsText, setCommentsText] = useState(initialComments);
+  const [link, setLink] = useState(initialLink);
   const [email, setEmail] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentCurrency>("usdtbsc");
-  const [paymentMinimum, setPaymentMinimum] = useState<{ currency: PaymentCurrency; minimum?: number; error?: string } | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentCurrency>(isPaymentCurrency(initialCurrency) ? initialCurrency : "usdtbsc");
   const [minimumRefresh, setMinimumRefresh] = useState(0);
+  const paymentQuote = usePaymentMinimum(paymentMethod, minimumRefresh);
+  const [serverMinimum, setServerMinimum] = useState<{currency:PaymentCurrency; minimum:number} | null>(null);
+  const paymentMinimum = paymentQuote && {...paymentQuote, minimum: Math.max(paymentQuote.minimum || 0, serverMinimum?.currency === paymentMethod ? serverMinimum.minimum : 0) || undefined};
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftNotice, setDraftNotice] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const submitting = useRef(false);
   const [profileCheck, setProfileCheck] = useState<ProfileCheck | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const comments = useMemo(() => commentsText.split("\n").map((item) => item.trim()).filter(Boolean), [commentsText]);
-  const pricedQuantity = offer.customComments ? Math.max(offerMin, comments.length) : quantity;
-  const price = calculateOfferPrice(service, pricedQuantity, offer);
   const checkingPayment = paymentMinimum?.currency !== paymentMethod;
   const requiredMinimum = Math.max(minimumCheckoutUsd, paymentMinimum?.currency === paymentMethod ? paymentMinimum.minimum ?? minimumCheckoutUsd : minimumCheckoutUsd);
   const requiredQuantity = getCheckoutMinimumQuantity(service, offer, requiredMinimum);
+  const quantity = hasSelectedPackage ? quantityInput : normalizeCheckoutQuantity(service,offer,quantityInput,requiredMinimum);
+  const pricedQuantity = offer.customComments ? comments.length : quantity;
+  const price = calculateOfferPrice(service, pricedQuantity, offer);
   const belowPaymentMinimum = Number(price.toFixed(2)) < requiredMinimum;
   const profileService = isProfileService(service);
   const checkProfileAutomatically = profileService && (service.platform !== "Instagram" || instagramLookupEnabled);
   const activeGoal = service.metric === "subscribers" ? "followers" : service.metric;
   const parsedProfile = profileService ? parseProfileTarget(service.platform, link) : null;
-  const quantityPresets = [...new Set([offerMin, service.baseQuantity, service.baseQuantity * 2, service.baseQuantity * 5]
-    .map((value) => Math.min(offerMax, Math.max(offerMin, Math.round(value / offerStep) * offerStep))))];
+  const quantityPresets = [...new Set([requiredQuantity, service.baseQuantity, service.baseQuantity * 2, service.baseQuantity * 5]
+    .map((value) => Math.min(offerMax, Math.max(requiredQuantity, Math.round(value / offerStep) * offerStep))))];
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch(`/api/payments/minimum?currency=${paymentMethod}`, { signal: controller.signal, cache: "no-store" })
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok || !Number.isFinite(result.minimum_usd) || result.minimum_usd <= 0) throw new Error(result.error || "Payment availability could not be checked.");
-        if (!controller.signal.aborted) setPaymentMinimum({ currency: paymentMethod, minimum: result.minimum_usd });
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setPaymentMinimum({ currency: paymentMethod, error: error instanceof Error ? error.message : "Payment availability could not be checked." });
-      });
-    return () => controller.abort();
-  }, [paymentMethod, minimumRefresh]);
+    let draft;
+    try {draft=parseCheckoutDraft(sessionStorage.getItem(resumeOrder ? `${checkoutDraftKey}:${resumeOrder}` : checkoutDraftKey));} catch {}
+    // Restore once after hydration; browser-only storage is unavailable on the server.
+    if(draft) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      const matchesResume = !resumeOrder || draft.order === resumeOrder;
+      if(matchesResume) setEmail(draft.email);
+      const sameSelection = draft.selectionKey === selectionKey;
+      if(matchesResume && (sameSelection || Boolean(resumeOrder) || !initialService || (draft.serviceSlug===initialService && (!initialOffer || draft.offerId===initialOffer)))) {
+        const savedService=services.find(item=>item.slug===draft.serviceSlug);
+        if(savedService) {
+          const savedOffer=getServiceOffer(savedService,draft.offerId);
+          setServiceSlug(savedService.slug); setOfferId(savedOffer.id);
+          setQuantity(normalizeCheckoutQuantity(savedService,savedOffer, sameSelection || resumeOrder || !initialQuantity ? draft.quantity : initialQuantity));
+          setLink(draft.link); setCommentsText(draft.commentsText);
+          if(isPaymentCurrency(draft.paymentMethod) && (sameSelection || resumeOrder || !initialCurrency)) setPaymentMethod(draft.paymentMethod);
+          setDraftNotice("Your checkout details have been restored. Review your package and total before paying.");
+        }
+      }
+    }
+    setDraftReady(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    trackCheckout({event:resumeOrder ? "checkout_recovered" : "checkout_opened",order:resumeOrder,serviceSlug:initialService,offerId:initialOffer});
+  },[initialService,initialOffer,initialQuantity,initialCurrency,resumeOrder,selectionKey]);
+
+  useEffect(() => {
+    if(!draftReady) return;
+    try {
+      const previous=parseCheckoutDraft(sessionStorage.getItem(checkoutDraftKey));
+      persistCheckoutDraft({serviceSlug,offerId:offer.id,quantity,commentsText,link,email,paymentMethod,selectionKey,order:previous?.order});
+    } catch { /* Checkout also works when browser storage is unavailable. */ }
+  },[draftReady,serviceSlug,offer.id,quantity,commentsText,link,email,paymentMethod,selectionKey]);
 
   useEffect(() => {
     if (!checkProfileAutomatically || !link.trim() || !parseProfileTarget(service.platform, link)) return;
@@ -100,9 +130,8 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
     const next = services.find((item) => item.slug === slug) || fallback;
     setServiceSlug(slug);
     setOfferId(getServiceOffers(next)[0].id);
-    setQuantity(normalizeCheckoutQuantity(next, getServiceOffers(next)[0], next.baseQuantity));
-    setCommentsText("");
-    setLink("");
+    setQuantity(normalizeCheckoutQuantity(next, getServiceOffers(next)[0], next.baseQuantity, requiredMinimum));
+    if (next.platform !== service.platform) setLink("");
     setProfileCheck(null);
     setCheckingProfile(false);
     setState("idle");
@@ -112,7 +141,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
     if (submitting.current) return;
     const next = getServiceOffer(service, id);
     setOfferId(next.id);
-    setQuantity((current) => normalizeCheckoutQuantity(service, next, current));
+    setQuantity((current) => normalizeCheckoutQuantity(service, next, current, requiredMinimum));
     setState("idle");
   }
 
@@ -120,12 +149,14 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
     event.preventDefault();
     if (submitting.current || checkingPayment || paymentMinimum?.error || belowPaymentMinimum) return;
     if (!profileService && !parseOrderTarget(service, link)) {
+      trackCheckout({event:"checkout_validation_failed",serviceSlug,offerId:offer.id});
       setState("error");
       setMessage(`Enter the link to a public ${service.platform} post or video, rather than a profile.`);
       return;
     }
     if (profileService && (!parsedProfile || profileCheck?.status === "not_found" || profileCheck?.status === "private")) {
       setState("error");
+      trackCheckout({event:"checkout_validation_failed",serviceSlug,offerId:offer.id});
       setMessage(profileCheck?.status === "private" ? "Make this profile public before ordering." : profileCheck?.status === "not_found" ? "That profile could not be found. Check the username before paying." : "Enter a valid profile username or URL.");
       return;
     }
@@ -134,6 +165,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
       setMessage(`Orders must total at least $${minimumCheckoutUsd.toFixed(2)}. Increase the quantity${offer.customComments ? " or add more comments" : ""} to continue.`);
       return;
     }
+    trackCheckout({event:"checkout_submit_started",serviceSlug,offerId:offer.id,quantity:offer.customComments ? comments.length : quantity,currency:paymentMethod});
     submitting.current = true;
     setState("loading");
     setMessage("");
@@ -141,15 +173,21 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
       const response = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, paymentMethod, acceptedTerms: true }),
+        body: JSON.stringify({ serviceSlug, offerId: offer.id, quantity: offer.customComments ? comments.length : quantity, comments, link, email, paymentMethod, resumeOrder, checkoutSession: navigator.doNotTrack === "1" ? undefined : checkoutSessionId(), acceptedTerms: true }),
       });
       const data = await response.json();
-      if (typeof data.minimum_usd === "number") setPaymentMinimum({ currency: paymentMethod, minimum: data.minimum_usd });
+      if (typeof data.minimum_usd === "number") setServerMinimum({ currency: paymentMethod, minimum: data.minimum_usd });
       if (!response.ok) throw new Error(data.error || "We could not place the order.");
       setState("success");
       setMessage(`Order ${data.order} was created. Opening secure payment…`);
+      try {
+        const savedDraft=JSON.stringify({serviceSlug,offerId:offer.id,quantity,commentsText,link,email,paymentMethod,selectionKey,order:data.order,savedAt:Date.now()});
+        sessionStorage.setItem(checkoutDraftKey,savedDraft);
+        sessionStorage.setItem(`${checkoutDraftKey}:${data.order}`,savedDraft);
+      } catch {}
       window.location.assign(data.checkout_url);
     } catch (error) {
+      trackCheckout({event:"checkout_client_failed",serviceSlug,offerId:offer.id,currency:paymentMethod});
       submitting.current = false;
       setState("error");
       setMessage(error instanceof Error ? error.message : "We could not place the order.");
@@ -157,8 +195,9 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
   }
 
   return (
-    <form className="checkout" onSubmit={submit}>
+    <form className="checkout" onSubmit={submit} onInvalid={()=>trackCheckout({event:"checkout_validation_failed",serviceSlug,offerId:offer.id})}>
       <div className="checkout__main">
+        {draftNotice && <p className="checkout-draft-notice" role="status">{draftNotice}</p>}
         {hasSelectedPackage && (
           <div className="selected-package">
             <div className="selected-package__top"><span className="eyebrow">Your selection</span><button type="button" onClick={() => setEditingPackage((current) => !current)} aria-expanded={editingPackage}>{editingPackage ? "Done editing" : "Change package"}</button></div>
@@ -200,7 +239,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
 
         <div className="form-section form-section--spaced">
           <span className="step-number">02</span>
-          <div><h2>Choose a package</h2><p>Each package maps to a provider service with matching targeting and protection.</p></div>
+          <div><h2>Choose a package</h2><p>Compare the audience, delivery speed and protection.</p></div>
         </div>
         <div className="package-options">
           {offers.map((item) => (
@@ -214,7 +253,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
 
         <div className="form-section form-section--spaced">
           <span className="step-number">03</span>
-          <div><h2>{offer.customComments ? "Write your comments" : "Choose the amount"}</h2><p>{offer.customComments ? `Add at least ${offerMin} comments, one per line, in multiples of ${offerStep}.` : "Use the slider for a package that fits your campaign."}</p></div>
+          <div><h2>{offer.customComments ? "Write your comments" : "Choose the amount"}</h2><p>{offer.customComments ? `Add at least ${requiredQuantity} comments, one per line, in multiples of ${offerStep}.` : "Use the slider for a package that fits your campaign."}</p></div>
         </div>
         {offer.customComments ? (
           <label className="comments-field">
@@ -231,7 +270,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
               ))}
             </div>
             <label className="range-label" htmlFor="order-quantity"><span>Quantity</span><strong>{quantity.toLocaleString("en-US")}</strong></label>
-            <input id="order-quantity" className="range" type="range" min={offerMin} max={offerMax} step={offerStep} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />
+            <input id="order-quantity" className="range" type="range" min={requiredQuantity} max={offerMax} step={offerStep} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />
           </>
         )}
         {hasSelectedPackage && <button className="package-edit-done" type="button" onClick={() => setEditingPackage(false)}>Continue with this package <ArrowRight aria-hidden="true" /></button>}
@@ -240,7 +279,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
           <label className="comments-field comments-field--selected">
             <span>Write your comments <strong>{comments.length.toLocaleString("en-US")}</strong></span>
             <textarea value={commentsText} onChange={(event) => setCommentsText(event.target.value)} rows={6} placeholder={"Love this perspective!\nThis was really helpful.\nGreat work on this one."} required />
-            <small>One comment per line. Minimum {offerMin}, in multiples of {offerStep}.</small>
+            <small>One comment per line. Minimum {requiredQuantity}, in multiples of {offerStep}.</small>
           </label>
         )}
 
@@ -268,7 +307,9 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         <div className="summary-row"><span>Audience</span><strong>{offer.audience}</strong></div>
         <div className="summary-row"><span>Quantity</span><strong>{(offer.customComments ? comments.length : quantity).toLocaleString("en-US")}</strong></div>
         <div className="summary-row"><span>Protection</span><strong>{offer.protection}</strong></div>
-        <div className="summary-total"><span>Total</span><strong>${price.toFixed(2)}</strong></div>
+        <div className="summary-total"><span>Total</span><strong>{checkingPayment ? "Checking…" : `$${price.toFixed(2)}`}</strong></div>
+        {link.trim() && <div className="summary-row"><span>Deliver to</span><strong className="summary-target">{parsedProfile ? `@${parsedProfile.handle}` : link}</strong></div>}
+        <p className="checkout-note"><strong>Requires an existing crypto wallet.</strong> Card payments are not available yet.</p>
         <fieldset className="payment-methods">
           <legend>How would you like to pay?</legend>
           {paymentMethods.map((method) => (
@@ -284,7 +325,7 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
           {!checkingPayment && paymentMinimum?.error && (
             <div className="form-message form-message--error" role="alert">
               <p>{paymentMinimum.error}</p>
-              <button type="button" className="button button--cream" onClick={() => { setPaymentMinimum(null); setMinimumRefresh((value) => value + 1); }}>Check again</button>
+              <button type="button" className="button button--cream" onClick={() => setMinimumRefresh((value) => value + 1)}>Check again</button>
             </div>
           )}
           {!checkingPayment && !paymentMinimum?.error && belowPaymentMinimum && (
@@ -306,7 +347,8 @@ export function OrderForm({ initialService, initialOffer, initialQuantity, insta
         </button>
         <p className="secure-note"><LockKeyhole aria-hidden="true" /> Encrypted and private. No password required.</p>
         {message && <div className={`form-message form-message--${state}`} role="status">{state === "success" && <CheckCircle2 />} {message}</div>}
-        <p className="checkout-note">Fulfillment begins only after secure payment confirmation.</p>
+        <p className="checkout-note">You’ll see the wallet address, exact amount and payment deadline on the next screen. Send on the selected network before the timer expires. If you’ve already sent funds, check your order status before trying again.</p>
+        <p className="checkout-note">Payment confirmation comes first. Delivery starts afterwards; you can follow both in order tracking.</p>
       </aside>
     </form>
   );

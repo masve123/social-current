@@ -10,7 +10,9 @@ import { fulfillPaidOrder } from "../lib/order-processing";
 import { reconcileStaleOrder, markSupplierRequestStarted, claimOrderForFulfillment, makeOrderRetryable } from "../lib/order-store";
 import { POST as webhook } from "../app/api/payments/nowpayments/route";
 import { POST as orderAction } from "../app/api/order/action/route";
-import { POST } from "../app/api/order/route";
+import { POST, GET as lookupOrder } from "../app/api/order/route";
+import { POST as browserEvent } from "../app/api/checkout/events/route";
+import { saveCheckoutEvent, checkoutFunnel } from "../lib/checkout-event-store";
 import { database, ensureDatabase } from "../lib/db";
 import { attachPaymentInvoice, createStoredOrder, findStoredOrder, recordPaymentEvent } from "../lib/order-store";
 import { refreshOrderPayment } from "../lib/payment-reconciliation";
@@ -34,9 +36,9 @@ const integration = connection ? test : test.skip;
 const checkout = { serviceSlug: "instagram-followers", offerId: "usa-female", quantity: 200, link: "@instagram", email: "checkout-test@example.com", acceptedTerms: true, paymentMethod: "usdtbsc" };
 const request = (body: unknown) => new NextRequest("https://example.com/api/order", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
 
-before(async () => { if (connection) await ensureDatabase(); });
+before(async () => { if (connection) {await ensureDatabase(); await saveCheckoutEvent({event:"checkout_opened"});} });
 beforeEach(async () => {
-  if (connection) await database()`TRUNCATE social_current_payment_events, social_current_orders, social_current_checkout_attempts`;
+  if (connection) await database()`TRUNCATE social_current_checkout_events, social_current_payment_events, social_current_orders, social_current_checkout_attempts`;
 });
 afterEach(() => mock.restoreAll());
 after(async () => { if (connection) await database().end(); });
@@ -364,3 +366,84 @@ for (const body of ["null", "[]", "42", "invalid JSON"]) {
     assert.equal(response.status, 400);
   });
 }
+
+const eventSession="12345678-1234-4234-8234-123456789abc";
+const eventId="12345678-1234-4234-8234-123456789abd";
+function metricRequest(data:unknown,origin="https://example.com") {
+  return new NextRequest("https://example.com/api/checkout/events",{method:"POST",headers:{origin,"Content-Type":"application/json"},body:JSON.stringify(data)});
+}
+integration("browser funnel events deduplicate repeated delivery",async()=>{
+  const data={event:"package_selected",eventId,sessionId:eventSession,serviceSlug:"instagram-followers",offerId:"usa-female",quantity:200,currency:"usdtbsc"};
+  assert.equal((await browserEvent(metricRequest(data))).status,204);
+  assert.equal((await browserEvent(metricRequest(data))).status,204);
+  const rows=await database()`SELECT * FROM social_current_checkout_events`;
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].session_id,eventSession);
+});
+integration("funnel rejects personal fields, forged confirmations and foreign origins",async()=>{
+  const data={event:"checkout_opened",eventId,sessionId:eventSession};
+  for(const input of [{...data,email:"buyer@example.com"},{...data,targetUrl:"https://instagram.com/creator"},{...data,event:"payment_confirmed"},null]) assert.equal((await browserEvent(metricRequest(input))).status,400);
+  assert.equal((await browserEvent(metricRequest(data,"https://foreign.test"))).status,403);
+  assert.equal((await browserEvent(metricRequest({...data,offerId:42}))).status,400);
+  assert.equal((await browserEvent(metricRequest({...data,offerId:"x".repeat(3000)}))).status,413);
+  assert.equal((await database()`SELECT * FROM social_current_checkout_events`).length,0);
+});
+integration("successful checkout records server stages without customer details",async()=>{
+  gateway();
+  const response=await POST(request({...checkout,checkoutSession:eventSession}));
+  assert.equal(response.status,201);
+  const rows=await database()`SELECT * FROM social_current_checkout_events ORDER BY created_at`;
+  assert.deepEqual(rows.map(row=>row.event_name),["checkout_submitted","payment_setup_succeeded"]);
+  assert.ok(!JSON.stringify(rows).includes(checkout.email));
+  assert.ok(!JSON.stringify(rows).includes(checkout.link));
+});
+integration("minimum failure is classified without creating an order",async()=>{
+  gateway({minimum:30});
+  assert.equal((await POST(request(checkout))).status,400);
+  const rows=await database()`SELECT error_code FROM social_current_checkout_events WHERE event_name='checkout_failed'`;
+  assert.equal(rows[0].error_code,"minimum");
+  assert.equal((await database()`SELECT * FROM social_current_orders`).length,0);
+});
+integration("provider initialization failure is captured separately",async()=>{
+  gateway({rejectPayment:true});
+  assert.equal((await POST(request(checkout))).status,502);
+  const rows=await database()`SELECT error_code FROM social_current_checkout_events WHERE event_name='checkout_failed'`;
+  assert.equal(rows[0].error_code,"provider_unavailable");
+});
+integration("confirmed payment is counted once across duplicate and later paid callbacks",async()=>{
+  const order=await staleOrder();
+  await paymentEvent(order.public_id,"confirmed");
+  await paymentEvent(order.public_id,"confirmed");
+  await paymentEvent(order.public_id,"finished");
+  const funnel=await checkoutFunnel();
+  assert.equal(funnel.stages.find(row=>row.event_name==="payment_confirmed")!.events,1);
+});
+integration("expired tracking supplies a recovery link without exposing customer details",async()=>{
+  const order=await staleOrder();
+  await paymentEvent(order.public_id,"expired");
+  const response=await lookupOrder(new NextRequest(`https://example.com/api/order?order=${order.public_id}`));
+  assert.equal(response.status,200);
+  const data=await response.json();
+  assert.equal(data.retry_url,`/order?resume=${order.public_id}`);
+  assert.equal(data.payment_url,undefined);
+  assert.equal(data.email,undefined);
+});
+
+integration("restart checks the provider again and refuses a late payment",async()=>{
+  const {verifyCheckoutRestart}=await import("../lib/verify-checkout-restart");
+  const order=await staleOrder();
+  await paymentEvent(order.public_id,"expired");
+  mock.method(globalThis,"fetch",async()=>Response.json({order_id:order.public_id,payment_id:order.payment_id,price_amount:12.99,price_currency:"usd",payment_status:"finished",actually_paid:12.99}));
+  assert.equal(await verifyCheckoutRestart((await findStoredOrder(order.public_id))!),false);
+  assert.equal((await findStoredOrder(order.public_id))!.payment_status,"finished");
+});
+integration("restart permits a verified zero-paid expired payment and fails closed on outage",async()=>{
+  const {verifyCheckoutRestart}=await import("../lib/verify-checkout-restart");
+  const order=await staleOrder();
+  await paymentEvent(order.public_id,"expired");
+  mock.method(globalThis,"fetch",async()=>Response.json({order_id:order.public_id,payment_id:order.payment_id,price_amount:12.99,price_currency:"usd",payment_status:"expired",actually_paid:0}));
+  assert.equal(await verifyCheckoutRestart((await findStoredOrder(order.public_id))!),true);
+  mock.restoreAll();
+  mock.method(globalThis,"fetch",async()=>{throw new Error("offline");});
+  await assert.rejects(()=>verifyCheckoutRestart({...order,payment_status:"expired"}),/could not be reached/);
+});

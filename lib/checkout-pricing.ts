@@ -17,9 +17,9 @@ export function getCheckoutMinimumQuantity(service: Service, offer: SmmOffer, mi
   return max;
 }
 
-export function normalizeCheckoutQuantity(service: Service, offer: SmmOffer, quantity: number) {
+export function normalizeCheckoutQuantity(service: Service, offer: SmmOffer, quantity: number, minimumUsd = minimumCheckoutUsd) {
   const step = offer.step ?? service.step;
-  const min = getCheckoutMinimumQuantity(service, offer);
+  const min = getCheckoutMinimumQuantity(service, offer, minimumUsd);
   const max = Math.floor((offer.max ?? service.max) / step) * step;
   return Math.min(max, Math.max(min, Math.ceil(quantity / step) * step));
 }

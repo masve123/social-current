@@ -1,4 +1,5 @@
 "use client";
+import { PayablePrice } from "@/components/payable-price";
 
 import Link from "next/link";
 import { ArrowRight, Eye, Heart, MessageCircle, Music2, Play, Users, Instagram, Youtube } from "lucide-react";
@@ -47,7 +48,7 @@ export function GrowthFinder() {
         <div className="finder__result" aria-live="polite">
           <span className="finder__result-label">Your match</span>
           <div className="finder__result-icon"><Play fill="currentColor" /></div>
-          {selected ? <><span className="eyebrow">{selected.platform} · {selected.metric}</span><h3>{selected.title}</h3><p>{selected.description}</p><dl><div><dt>Packages from</dt><dd>${selected.basePrice.toFixed(2)}</dd></div><div><dt>Delivery</dt><dd>{selected.delivery}</dd></div><div><dt>Coverage</dt><dd>{selected.retention}</dd></div></dl><Link className="button button--coral button--wide" href={servicePath(selected)}>See packages <ArrowRight /></Link></> : <p>No matching service is currently available.</p>}
+          {selected ? <><span className="eyebrow">{selected.platform} · {selected.metric}</span><h3>{selected.title}</h3><p>{selected.description}</p><dl><div><dt>From · USDT on BSC</dt><dd><PayablePrice service={selected} /></dd></div><div><dt>Delivery</dt><dd>{selected.delivery}</dd></div><div><dt>Coverage</dt><dd>{selected.retention}</dd></div></dl><Link className="button button--coral button--wide" href={servicePath(selected)}>See packages <ArrowRight /></Link></> : <p>No matching service is currently available.</p>}
         </div>
       </div>
     </section>

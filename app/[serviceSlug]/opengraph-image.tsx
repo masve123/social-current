@@ -1,5 +1,3 @@
-import { getStandardCheckoutMinimumQuantity } from "@/lib/checkout-pricing";
-import { calculatePrice } from "@/lib/services";
 import { ImageResponse } from "next/og";
 import { getServiceByPublicSlug } from "@/lib/service-path";
 
@@ -10,7 +8,7 @@ export const contentType = "image/png";
 export default async function Image({ params }: { params: Promise<{ serviceSlug: string }> }) {
   const service = getServiceByPublicSlug((await params).serviceSlug);
   const title = service?.title || "Social Media Growth Services";
-  const detail = service ? `Packages from $${calculatePrice(service, getStandardCheckoutMinimumQuantity(service)).toFixed(2)} · ${service.delivery}` : "Clear packages and delivery";
+  const detail = service ? `Choose a payable package · ${service.delivery}` : "Clear packages and delivery";
   return new ImageResponse(
     <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", padding: 76, background: "#ff826f", color: "#171815", fontFamily: "serif" }}>
       <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 38, border: "2px solid #171815", borderRadius: 28, padding: 52, background: "#fffdf8", boxShadow: "18px 20px 0 #171815" }}>

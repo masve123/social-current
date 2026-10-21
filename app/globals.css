@@ -458,3 +458,12 @@ input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea {
   .payment-result, .admin-auth, .admin-order { padding: 22px; }
   .admin-order { grid-template-columns: 1fr; }
 }
+
+.checkout-draft-notice { padding: 14px; border: 1px solid var(--mint); border-radius: 10px; background: #eef3e8; font-size: 13px; }
+.summary-target { overflow-wrap: anywhere; min-width: 0; max-width: 65%; }
+.checkout-funnel { padding: 24px; background: #fff; border-radius: 16px; margin: 24px 0; }
+.checkout-funnel p { font-size: 13px; line-height: 1.6; }
+.checkout-funnel__table { overflow-x: auto; }
+.checkout-funnel table { width: 100%; text-align: left; border-collapse: collapse; font-size: 13px; }
+.checkout-funnel th, .checkout-funnel td { padding: 10px; border-bottom: 1px solid #ddd; }
+.payment-result .button + .button { margin-top: 12px; }

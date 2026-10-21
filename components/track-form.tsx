@@ -74,8 +74,10 @@ export function TrackForm({ initialOrder = "" }: { initialOrder?: string }) {
       {result && (
         <>
           <dl className="track-result">
-            {Object.entries(result).filter(([key]) => !key.startsWith("can_") && key !== "order").map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}
+            {Object.entries(result).filter(([key]) => !key.startsWith("can_") && !["order","retry_url","payment_url"].includes(key)).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}
           </dl>
+          {result.retry_url && <><p>If you already sent funds, contact support before paying again.</p><Link className="button button--coral" href={String(result.retry_url)}>Review details and try again</Link></>}
+          {result.payment_url && <a className="button button--coral" href={String(result.payment_url)}>Return to payment</a>}
           {(result.can_refill || result.can_cancel) && (
             <div className="track-actions">
               {result.can_refill && <button className="button button--ink" type="button" disabled={working} onClick={() => requestAction("refill")}><RefreshCcw /> Request refill</button>}
